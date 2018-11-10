@@ -17,10 +17,11 @@ uint8_t routineCounter = 0;
 
 
 uint32_t solidColourHolder = 0x00000000;      //laziness
-uint8_t red = 0, green = 0, blue = 0;
+uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colours
+uint8_t red_s = 0, green_s = 0, blue_s = 0; //secondary colours
 
-byte input[4] = {0,0,0,0};
-
+uint8_t option_mode   = 0; //normal, strobe, theatrechase
+uint8_t option_colour = 0; //single,double, invert, random
 
 byte toggle = 0;
 
@@ -29,7 +30,7 @@ uint32_t limitBrightness(uint8_t rrr,uint8_t ggg,uint8_t bbb){
    return strip.Color(rrr * 0.75, ggg * 0.75, bbb * 0.75);
   }else{
     return strip.Color(rrr, ggg, bbb);
-  }  
+  }
 }
 
 
@@ -80,7 +81,7 @@ void colorSolid(uint8_t r, uint8_t g, uint8_t b) {
   uint32_t oneBigColour = limitBrightness(r, g, b);
   for(uint16_t i=0; i<pixelCount; i++) {
       strip.setPixelColor(i,oneBigColour);
-    }    
+    }
     strip.show();
   }
 
@@ -125,7 +126,7 @@ void colorPulse(uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
       pulseCounter = -4;
       routineCounter = 0;
       partyState++;
-   }    
+   }
    uint8_t reverse = partyState & 1;
    if(routineCounter < 5){
        routineCounter++;
@@ -138,19 +139,19 @@ void colorPulse(uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
               }
            if((pulseCounter - 1 >= 0)&&(pulseCounter - 1 < pixelCount)){
               strip.setPixelColor((reverse) ? pixelCount - pulseCounter : pulseCounter - 1,  (uint8_t)r * 0.6, (uint8_t)g * 0.6, (uint8_t)b * 0.6);        //set centre of pulse to max colour
-              } 
+              }
            if((pulseCounter + 2 < pixelCount)&&(pulseCounter + 2 >= 0)){
               strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 3 : pulseCounter + 2,(uint8_t) r * 0.4,(uint8_t) g * 0.4,(uint8_t) b * 0.4);        //set centre of pulse to max colour
               }
            if((pulseCounter - 2 >= 0)&&(pulseCounter - 2 < pixelCount)){
               strip.setPixelColor((reverse) ? pixelCount - pulseCounter + 1 : pulseCounter - 2,(uint8_t) r * 0.4,(uint8_t) g * 0.4, (uint8_t)b * 0.4);        //set centre of pulse to max colour
-              } 
+              }
            if((pulseCounter + 3 < pixelCount)&&(pulseCounter + 3 >= 0)){
               strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 4 : pulseCounter + 3, (uint8_t) r * 0.2,(uint8_t) g * 0.2,(uint8_t) b * 0.2);        //set centre of pulse to max colour
               }
            if((pulseCounter - 3 >= 0)&&(pulseCounter - 3 < pixelCount)){
               strip.setPixelColor((reverse) ? pixelCount - pulseCounter + 2 : pulseCounter - 3, (uint8_t)r * 0.2, (uint8_t)g * 0.2, (uint8_t)b * 0.2);        //set centre of pulse to max colour
-              } 
+              }
               pulseCounter++;
     }
      strip.show();
@@ -212,30 +213,41 @@ void setup() {
   pinMode(13, OUTPUT);
   Serial.begin(115200);
   strip.begin();
-  strip.show(); 
+  strip.show();
 }
 
-void getData(){
-    Serial.readBytes(&input[0],4);
-    if(offR >= input[0]){           //check the data is valid by testing the command byte
-    currentRoutine = input[0];
-    red = input[1];
-    green = input[2];
-    blue = input[3];
-   // Serial.write(&input[0],4);
-    }  
+void getData(int data_length){
+    byte input[8]; // = {0,0,0,0};
+    Serial.readBytes(&input[0],data_length);
+    if(0x50 == (input[0] & 0xf0)){            //upper 4 bits == 0x5X
+      currentRoutine = input[0] & 0x0f;
+      red_p = input[1];
+      green_p = input[2];
+      blue_p = input[3];
+    }
+    if((data_length == 8) && ((input[7] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
+      red_s = input[4];
+      green_s = input[5];
+      blue_s = input[6];
+      option_colour = (input[7] >> 6) & 0x03;
+      option_mode   = (input[7] >> 4) & 0x03;
+    }
 }
 
 
 /***********************************main loop*****************************************/
 void loop() {
 
-  if(Serial.available() == 4){        //should be 4 bytes
-      getData();
+  if(Serial.available() == 4){        //should be 4 bytes in original version
+      getData(4);
+   }else if(Serial.available() == 8){ //update to 8 byte packets for 2 colour picker
+      getData(8);
    }else if(Serial.available() > 0){   //don't bother if there are no bytes in the buffer.
     delay(1);                       //give it another chance if mid-message
     if(Serial.available() == 4){
-      getData();
+      getData(4);
+    }else if(Serial.available() == 8){
+      getData(8);
     }else{
       byte x;
       while(Serial.available() > 0){
@@ -286,18 +298,18 @@ digitalWrite(13, ++toggle & 0x04);
               break;
               }
               break;
-    case colourPulseR:    colorPulse(red, green, blue,25);
+    case colourPulseR:    colorPulse(red_p, green_p, blue_p,25);
                           break;
-    case colourWipeR:     colorWipe(red, green, blue,25,  false, false);
+    case colourWipeR:     colorWipe(red_p, green_p, blue_p,25,  false, false);
                           break;
-    case solidColourR:     colorSolid(red, green, blue);      //set the colour once then do nothing
+    case solidColourR:     colorSolid(red_p, green_p, blue_p);      //set the colour once then do nothing
                           currentRoutine = inactiveR;
                           break;
     case inactiveR:       delay(100);
                           break;
     case offR:            colorSolid(0, 0, 0);      //changed from 3 uint8_t to a single uint32_t
                           currentRoutine = inactiveR;
-                          break;    
+                          break;
     default:              currentRoutine = inactiveR;
                           break;
   }
