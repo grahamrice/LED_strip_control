@@ -7,14 +7,15 @@ const int led = 2;      //for the strip!
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, led, NEO_GRB + NEO_KHZ800);
 
-enum routine_t { rainbowR, rainbowCycR, partyR, colourWipeR, solidColourR, colourPulseR, offR, inactiveR};   //inactive is essentially off but will not sleep. Used after awakening
+enum routine_t { rainbowR, rainbowChunksR, colourPulseR, colourChunksR, colourWipeR, colourFadeR, colourSlideR, solidColourR, offR};
+
+enum colour_opt_t {oc_single, oc_double, oc_invert, oc_random};
 
 routine_t currentRoutine = offR;
 
 int partyState = 0;
 int pulseCounter = 0;
-uint8_t routineCounter = 0;
-
+uint16_t routineCounter = 0;
 
 uint32_t solidColourHolder = 0x00000000;      //laziness
 uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colours
@@ -26,6 +27,15 @@ uint8_t option_slider = 0;
 
 byte toggle = 0;
 
+bool switched_off = True;
+bool direction = False; //false count up, true count down
+bool set_clear = False; //false for colour1, true for colour2
+
+uint32_t random_hold; //hold a random value, future randoms will be psuedo-random bit ops from this
+uint8_t random_counter; // when counter rolls over, random_hold will be updated with a new value
+
+/*------------------------------- General functions--------------------------------------------------------*/
+
 uint32_t limitBrightness(uint8_t rrr,uint8_t ggg,uint8_t bbb){
   if((rrr + ggg + bbb) > 575){
    return strip.Color(rrr * 0.75, ggg * 0.75, bbb * 0.75);
@@ -34,9 +44,26 @@ uint32_t limitBrightness(uint8_t rrr,uint8_t ggg,uint8_t bbb){
   }
 }
 
+uint32_t rotate_left(uint32_t input, int shifts) //24 bit rotate, don't shift more than 24
+{
+  uint32_t result = 0;
+  result = input << shifts;
+  result |= (input >> (24 - shifts));
+  return result & 0xffffff;
+}
 
-/***********************************LED strip functions*********************************************************/
-uint16_t j = 0;
+void shuffle_colour(uint32_t * colour_in)
+{
+  uint32_t old = *colour_in;
+  old += 0xa75d23;
+  old = rotate_left(old,7);
+  *colour_in = old ^ 0x8f61dc;
+}
+
+uint32_t get_random(){
+   shuffle_colour(&random_hold);
+   return random_hold & 0xffffff;
+}
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
@@ -53,75 +80,96 @@ uint32_t Wheel(byte WheelPos) {
   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
 
+/***********************************LED strip functions*********************************************************/
+uint8_t j = 0; //use routineCounter for small counter and j for direction changes
+
 
 // Fill the dots one after the other with a color
-void colorWipe(uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir, bool rev) {
- uint32_t oneBigColour = limitBrightness(r, g, b);
+void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir, bool rev) {
+ uint32_t colour1, colour2;
+
+  switch(option_colour){
+    case oc_single: colour1 = strip.Color(red_p, green_p, blue_p);
+                    colour2 = 0;
+                    break;
+    case oc_double: colour1 = strip.Color(red_p, green_p, blue_p);
+                    colour2 = strip.Color(red_s, green_s, blue_s);
+                    break;
+    case oc_invert: colour1 = strip.Color(red_p, green_p, blue_p);
+                    colour2 = strip.Color(0xff - red_p, 0xff - green_p, 0xff - blue_p);
+                    break;
+    case oc_random: colour1 = random_hold;
+                    colour2 = 0;
+                    break;
+  }
+
   if(routineCounter >=pixelCount){
       routineCounter = 0;
-      partyState++;
+      j++;
+      switch(j){ //perhaps move this into a function if the bools make sense for other routines.
+        case 1: direction = false; //second colour L->R
+                set_clear = true;
+                break;
+        case 2: direction = true; //first colour R->L
+                set_clear = false;
+                break;
+        case 3: direction = true; //second colour R->L
+                set_clear = true;
+                break;
+        case 4: direction = false; //first colour L->R
+                set_clear = false;
+                break;
+        default: j = 0;
+                direction = false;
+                set_clear = false;
+                break;
+      }
    }
-   uint8_t reverse;
-   uint8_t setClr;
-   if(setDir){
-     reverse = rev;
-     setClr = 0;
-   }else{
-    reverse = partyState & 2;
-    setClr = partyState & 1;                        //set on first part of routine, clear on second
-   }
-   strip.setPixelColor((reverse) ? pixelCount - routineCounter - 1 : routineCounter, (setClr)? 0 : oneBigColour);      //if reverse is true, start from last pixel
+   strip.setPixelColor((direction) ? pixelCount - routineCounter - 1 : routineCounter, (set_clear)? colour2 : colour1);      //if reverse is true, start from last pixel
    strip.show();
     routineCounter++;
-
-    delay(wait);
-  //}
 }
 
-void colorSolid(uint8_t r, uint8_t g, uint8_t b) {
-  uint32_t oneBigColour = limitBrightness(r, g, b);
+void colourSolid() {
+  uint32_t oneBigColour;
+  if(switched_off) oneBigColour = 0;
+  else{
+    switch(option_colour){
+      case oc_single: oneBigColour = strip.Color(red_p, green_p, blue_p);
+                      break;
+      case oc_double: oneBigColour = strip.Color(red_s, green_s, blue_s);
+                      break;
+      case oc_invert: oneBigColour = strip.Color((red_p + red_s)/2, (green_p + green_s)/2, (blue_p + blue_s)/2);
+                      break;
+      case oc_random: oneBigColour = random_hold;
+                      break;
+    }
+  }
   for(uint16_t i=0; i<pixelCount; i++) {
       strip.setPixelColor(i,oneBigColour);
     }
-    strip.show();
+}
+
+
+
+void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows across pixels - 400 for simplicity, will go up to 1.56 rainbows across
+    uint16_t slider = option_slider << 2;
+    if(j >=256){
+        j = 0;
+      }
+      for(int i=0; i< strip.numPixels(); i++) {
+        strip.setPixelColor(i, Wheel(((i * slider / strip.numPixels()) + j) & 255)); //halving to 128 spreads the full spectrum over unused pixels
+      }
+      j++;
   }
 
+void rainbowChunks(){
 
 
-void rainbow(uint8_t wait) {
-  uint16_t i;
 
-  //for(j=0; j<256; j++) {
-  if(j >=256){
-      j = 0;
-    }
-    for(i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i>>3)+j) & 255));
-    }
-    strip.show();
-    j++;
-    delay(wait);
-  //}
 }
 
-// Slightly different, this makes the rainbow equally distributed throughout
-void rainbowCycle(uint8_t wait) {
-  uint16_t i;
-
-  //for(j=0; j<256*5; j++) { // 5 cycles of all colors on wheel
-   if(j >=256*5){
-      j = 0;
-    }
-    for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
-    }
-    strip.show();
-    j++;
-    delay(wait);
-  //}
-}
-
-void colorPulse(uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
+void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
   strip.clear();
     if(pulseCounter >= 4 + pixelCount){
       pulseCounter = -4;
@@ -155,10 +203,32 @@ void colorPulse(uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
               }
               pulseCounter++;
     }
-     strip.show();
-     delay(wait);
 }
 
+void colourChunks(){
+
+
+
+}
+
+void colourFade(){
+
+
+
+}
+
+void colourSlide(){
+
+
+
+}
+
+/*------------------------------------------------------------------------*/
+
+void apply_mode(uint8_t check){
+  //use check to disable features for certain modes
+
+}
 
 //Theatre-style crawling lights.
 void theaterChase(uint32_t c, uint8_t wait, bool reverse) {
@@ -213,11 +283,18 @@ void setup() {
   // initialize digital pin 13 as an output.
   pinMode(13, OUTPUT);
   Serial.begin(115200);
+  random_hold = random(0x1000000);
   strip.begin();
   strip.show();
 }
 
 /*-------------------------------get data--------------------------------------------*/
+
+uint8_t check_slider(uint8_t input)
+{
+  if(input > 100) return 100;
+  return input;
+}
 
 /* see bottom of file for data packet structure*/
 void getData(int data_length){
@@ -228,9 +305,10 @@ void getData(int data_length){
       red_p = input[1];
       green_p = input[2];
       blue_p = input[3];
+      switched_off = false;
     }
     if((data_length == 9) && ((input[8] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
-      option_slider = input[4];
+      option_slider = check_slider(input[4]);
       red_s = input[5];
       green_s = input[6];
       blue_s = input[7];
@@ -265,58 +343,59 @@ void loop() {
    //would an interrupt be better?
 digitalWrite(13, ++toggle & 0x04);
 //delay(100);
+if !(switched_off){
    switch(currentRoutine){
-    case rainbowR:        rainbow(100);
-                          break;
-    case rainbowCycR:   rainbowCycle(100);
-                          break;
-    case partyR:      switch(partyState){
-              case 0: colorWipe(0x9A, 0x33, 0x33, 10, true, false);
-                  break;
-              case 1: colorWipe(0x33, 0x9A, 0x33, 10,true,  false);
-                  break;
-              case 2: colorWipe(0x33, 0x33, 0x9A, 10,true,  false);
-                  break;
-              case 3: theaterChase(strip.Color(0x9A, 0x33, 0x33), 30, true);
-                  break;
-              case 4: theaterChase(strip.Color(0x9A, 0x9A, 0x33), 30, true);
-                  break;
-              case 5: theaterChase(strip.Color(0x33, 0x33, 0x9A), 30, true);
-                  break;
-              case 6: theaterChaseRainbow(40, true);
-                  break;
-              case 7: theaterChase(strip.Color(0x9A, 0x33, 0x33), 30, false);
-                  break;
-              case 8: theaterChase(strip.Color(0x9A, 0x9A, 0x33), 30, false);
-                  break;
-              case 9: theaterChase(strip.Color(0x33, 0x33, 0x9A), 30, false);
-                  break;
-              case 10:  colorWipe(0x9A, 0x33, 0x33, 10, true, true);
-                  break;
-              case 11: colorWipe(0x33, 0x9A, 0x33, 10, true, true);
-                  break;
-              case 12: colorWipe(0x33, 0x33, 0x9A, 10, true, true);
-                  break;
-              case 13:     partyState = 0;
-                  break;
-              default:  partyState = 0;
-              break;
-              }
-              break;
-    case colourPulseR:    colorPulse(red_p, green_p, blue_p,25);
-                          break;
-    case colourWipeR:     colorWipe(red_p, green_p, blue_p,25,  false, false);
-                          break;
-    case solidColourR:     colorSolid(red_p, green_p, blue_p);      //set the colour once then do nothing
-                          currentRoutine = inactiveR;
-                          break;
-    case inactiveR:       delay(100);
-                          break;
-    case offR:            colorSolid(0, 0, 0);      //changed from 3 uint8_t to a single uint32_t
-                          currentRoutine = inactiveR;
-                          break;
-    default:              currentRoutine = inactiveR;
-                          break;
+    rainbowR:         rainbow();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(30);
+                      break;
+    rainbowChunksR:   rainbowChunks();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(100);
+                      break;
+    colourPulseR:     colourPulse();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(100);
+                      break;
+    colourChunksR:    colourChunks();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(100);
+                      break;
+    colourWipeR:      colourWipe();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait((option_slider > 10) ? option_slider : 10);
+                      break;
+    colourFadeR:      colourFade();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait((option_slider > 10) ? option_slider : 10);
+                      break;
+    colourSlideR:     colourSlide();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(100);
+                      break;
+    solidColourR:     colourSolid();
+                      apply_mode(0xff);
+                      strip.show();
+                      wait(100);
+                      break;
+    offR:             if(!switched_off){
+                        switched_off = True;
+                        colourSolid();
+                        strip.show();
+                      }
+                      wait(100);
+                      break;
+    default:          currentRoutine = offR;
+                      break;
+   }
+   if(0 == --random_counter) get_random(); //change random value
   }
 }
 
