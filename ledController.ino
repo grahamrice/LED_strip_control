@@ -22,6 +22,7 @@ uint8_t red_s = 0, green_s = 0, blue_s = 0; //secondary colours
 
 uint8_t option_mode   = 0; //normal, strobe, theatrechase
 uint8_t option_colour = 0; //single,double, invert, random
+uint8_t option_slider = 0;
 
 byte toggle = 0;
 
@@ -216,8 +217,11 @@ void setup() {
   strip.show();
 }
 
+/*-------------------------------get data--------------------------------------------*/
+
+/* see bottom of file for data packet structure*/
 void getData(int data_length){
-    byte input[8]; // = {0,0,0,0};
+    byte input[9]; // = {0,0,0,0};
     Serial.readBytes(&input[0],data_length);
     if(0x50 == (input[0] & 0xf0)){            //upper 4 bits == 0x5X
       currentRoutine = input[0] & 0x0f;
@@ -225,12 +229,13 @@ void getData(int data_length){
       green_p = input[2];
       blue_p = input[3];
     }
-    if((data_length == 8) && ((input[7] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
-      red_s = input[4];
-      green_s = input[5];
-      blue_s = input[6];
-      option_colour = (input[7] >> 6) & 0x03;
-      option_mode   = (input[7] >> 4) & 0x03;
+    if((data_length == 9) && ((input[8] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
+      option_slider = input[4];
+      red_s = input[5];
+      green_s = input[6];
+      blue_s = input[7];
+      option_colour = (input[8] >> 6) & 0x03;
+      option_mode   = (input[8] >> 4) & 0x03;
     }
 }
 
@@ -240,14 +245,14 @@ void loop() {
 
   if(Serial.available() == 4){        //should be 4 bytes in original version
       getData(4);
-   }else if(Serial.available() == 8){ //update to 8 byte packets for 2 colour picker
-      getData(8);
+   }else if(Serial.available() == 9){ //update to 9 byte packets for 2 colour picker
+      getData(9);
    }else if(Serial.available() > 0){   //don't bother if there are no bytes in the buffer.
     delay(1);                       //give it another chance if mid-message
     if(Serial.available() == 4){
       getData(4);
-    }else if(Serial.available() == 8){
-      getData(8);
+    }else if(Serial.available() == 9){
+      getData(9);
     }else{
       byte x;
       while(Serial.available() > 0){
@@ -314,3 +319,19 @@ digitalWrite(13, ++toggle & 0x04);
                           break;
   }
 }
+
+/*---------------------------------------------
+byte 0 - 0x5yyyy;  yyyy = 4 bit routine
+byte 1 - red1
+byte 2 - green1
+byte 3 - blue1 - 4 byte mode will only include these bytes
+
+byte 4 - slider value
+byte 5 - red2
+byte 6 - green2
+byte 7 - blue2
+byte 8 - 0xzzwwA; zz = colour option, ww = mode option
+
+
+
+-----------------------------------------------*/
