@@ -27,9 +27,11 @@ uint8_t option_slider = 0;
 
 byte toggle = 0;
 
-bool switched_off = True;
-bool direction = False; //false count up, true count down
-bool set_clear = False; //false for colour1, true for colour2
+bool switched_off = true;
+bool direction = false; //false count up, true count down
+bool set_clear = false; //false for colour1, true for colour2
+
+bool recalc_colour = true;
 
 uint32_t random_hold; //hold a random value, future randoms will be psuedo-random bit ops from this
 uint8_t random_counter; // when counter rolls over, random_hold will be updated with a new value
@@ -62,6 +64,7 @@ void shuffle_colour(uint32_t * colour_in)
 
 uint32_t get_random(){
    shuffle_colour(&random_hold);
+   recalc_colour = true; //because random invert
    return random_hold & 0xffffff;
 }
 
@@ -86,23 +89,24 @@ uint8_t j = 0; //use routineCounter for small counter and j for direction change
 
 // Fill the dots one after the other with a color
 void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir, bool rev) {
- uint32_t colour1, colour2;
-
-  switch(option_colour){
-    case oc_single: colour1 = strip.Color(red_p, green_p, blue_p);
-                    colour2 = 0;
-                    break;
-    case oc_double: colour1 = strip.Color(red_p, green_p, blue_p);
-                    colour2 = strip.Color(red_s, green_s, blue_s);
-                    break;
-    case oc_invert: colour1 = strip.Color(red_p, green_p, blue_p);
-                    colour2 = strip.Color(0xff - red_p, 0xff - green_p, 0xff - blue_p);
-                    break;
-    case oc_random: colour1 = random_hold;
-                    colour2 = 0;
-                    break;
+ static uint32_t colour1, colour2;
+  if (recalc_colour){
+    switch(option_colour){
+      case oc_single: colour1 = strip.Color(red_p, green_p, blue_p);
+                      colour2 = 0;
+                      break;
+      case oc_double: colour1 = strip.Color(red_p, green_p, blue_p);
+                      colour2 = strip.Color(red_s, green_s, blue_s);
+                      break;
+      case oc_invert: colour1 = strip.Color(red_p, green_p, blue_p);
+                      colour2 = strip.Color(0xff - red_p, 0xff - green_p, 0xff - blue_p);
+                      break;
+      case oc_random: colour1 = random_hold;
+                      colour2 = 0;
+                      break;
+    }
+    recalc_colour = false;
   }
-
   if(routineCounter >=pixelCount){
       routineCounter = 0;
       j++;
@@ -164,45 +168,101 @@ void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows acros
   }
 
 void rainbowChunks(){
-
-
-
+  uint16_t slider = option_slider >> 2; // slider controls width of chunks of the same colour
+  uint16_t loRes = 0; //low resolution counter instead of relying on this thing to do integer divides
+  if(j >=256){
+      j = 0;
+  }
+  for(int i = 0; i < pixelCount; i++) {
+    if (i - loRes > slider) loRes += slider;
+    strip.setPixelColor(i,Wheel(loRes+j));
+  }
+  j++;
 }
 
 void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
+  static int width = 1;
+  static uint8_t r_fade[4] = {0,0,0,0};
+  static uint8_t g_fade[4] = {0,0,0,0};
+  static uint8_t b_fade[4] = {0,0,0,0};
+  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b;
+  uint8_t index = 0;
+  if (recalc_colour) {
+    width = 1 + (option_slider >> 4);
+    switch(option_colour){
+    case oc_double: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = red_s;
+                    colour2_g = green_s
+                    colour2_b = blue_s;
+                    break;
+    case oc_invert: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0xff - red_p;
+                    colour2_g = 0xff - green_p
+                    colour2_b = 0xff - blue_p;
+                    break;
+    case oc_random: colour1_r = (random_hold >> 16) & 0xff;
+                    colour1_g = (random_hold >> 8) & 0xff;
+                    colour1_b = (random_hold) & 0xff;
+                    colour2_r = 0xff - colour1_r;
+                    colour2_g = 0xff - colour1_g;
+                    colour2_b = 0xff - colour1_b; //random and random invert, right??
+                    break;
+    case oc_single:
+    case default:   colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0;
+                    colour2_g = 0;
+                    colour2_b = 0;
+                    break;
+    }
+    r_fade[0] = (uint8_t)((colour1_r * 0.8) + (colour2_r * 0.2));
+    r_fade[1] = (uint8_t)((colour1_r * 0.6) + (colour2_r * 0.4));
+    r_fade[2] = (uint8_t)((colour1_r * 0.4) + (colour2_r * 0.6));
+    r_fade[3] = (uint8_t)((colour1_r * 0.2) + (colour2_r * 0.8));
+    g_fade[0] = (uint8_t)((colour1_g * 0.8) + (colour2_g * 0.2));
+    g_fade[1] = (uint8_t)((colour1_g * 0.6) + (colour2_g * 0.4));
+    g_fade[2] = (uint8_t)((colour1_g * 0.4) + (colour2_g * 0.6));
+    g_fade[3] = (uint8_t)((colour1_g * 0.2) + (colour2_g * 0.8));
+    b_fade[0] = (uint8_t)((colour1_b * 0.8) + (colour2_b * 0.2));
+    b_fade[1] = (uint8_t)((colour1_b * 0.6) + (colour2_b * 0.4));
+    b_fade[2] = (uint8_t)((colour1_b * 0.4) + (colour2_b * 0.6));
+    b_fade[3] = (uint8_t)((colour1_b * 0.2) + (colour2_b * 0.8));
+
+    pulseCounter = 0 - 8 - width ;
+  }
+
   strip.clear();
-    if(pulseCounter >= 4 + pixelCount){
-      pulseCounter = -4;
+
+  if(pulseCounter >= 8 + width + pixelCount){
+      pulseCounter = 0 - 8 - width ;
       routineCounter = 0;
       partyState++;
+      direction = !direction;
    }
-   uint8_t reverse = partyState & 1;
-   if(routineCounter < 5){
-       routineCounter++;
-    }else{
-           if((pulseCounter >= 0)&&(pulseCounter < pixelCount)){
-                strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 1 : pulseCounter, r, g, b);        //set centre of pulse to max colour
-           }
-           if((pulseCounter + 1 < pixelCount)&&(pulseCounter + 1 >= 0)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 2 : pulseCounter + 1, (uint8_t) r * 0.6, (uint8_t)g * 0.6, (uint8_t)b * 0.6);        //set centre of pulse to max colour
-              }
-           if((pulseCounter - 1 >= 0)&&(pulseCounter - 1 < pixelCount)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter : pulseCounter - 1,  (uint8_t)r * 0.6, (uint8_t)g * 0.6, (uint8_t)b * 0.6);        //set centre of pulse to max colour
-              }
-           if((pulseCounter + 2 < pixelCount)&&(pulseCounter + 2 >= 0)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 3 : pulseCounter + 2,(uint8_t) r * 0.4,(uint8_t) g * 0.4,(uint8_t) b * 0.4);        //set centre of pulse to max colour
-              }
-           if((pulseCounter - 2 >= 0)&&(pulseCounter - 2 < pixelCount)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter + 1 : pulseCounter - 2,(uint8_t) r * 0.4,(uint8_t) g * 0.4, (uint8_t)b * 0.4);        //set centre of pulse to max colour
-              }
-           if((pulseCounter + 3 < pixelCount)&&(pulseCounter + 3 >= 0)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter - 4 : pulseCounter + 3, (uint8_t) r * 0.2,(uint8_t) g * 0.2,(uint8_t) b * 0.2);        //set centre of pulse to max colour
-              }
-           if((pulseCounter - 3 >= 0)&&(pulseCounter - 3 < pixelCount)){
-              strip.setPixelColor((reverse) ? pixelCount - pulseCounter + 2 : pulseCounter - 3, (uint8_t)r * 0.2, (uint8_t)g * 0.2, (uint8_t)b * 0.2);        //set centre of pulse to max colour
-              }
-              pulseCounter++;
-    }
+
+   /*for(int i = 0-8-width; i < pixelCount + 8 + width; i++){*/
+   for(int i=0; i<pixelCount; i++){
+     if((pulseCounter <= i)&&(i < pulseCounter + 4)) { //"before" the pulse
+        index = 3 - i - pulseCounter;
+        strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
+     }
+     else if((pulseCounter + 4 + width <= i)&&(i < pulseCounter + 8 + width)) { //"after" the pulse
+       index = i - pulseCounter - 4 - width;
+       strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
+   }
+   else if((pulseCounter + 4 <= i)&&(i < pulseCounter + 4 + width)){ //during the pulse
+      strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
+   }
+   else{    //in the secondary colour space
+      strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour2_g,colour2_b);
+   }
+
+    pulseCounter++;
 }
 
 void colourChunks(){
@@ -212,9 +272,59 @@ void colourChunks(){
 }
 
 void colourFade(){
+  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b;
+  uint8_t fin_r,fin_g,fin_b;
+  float prim, sec;
+  uint8_t index = 0;
+  if (recalc_colour) {
+    width = 1 + (option_slider >> 4);
+    switch(option_colour){
+    case oc_double: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = red_s;
+                    colour2_g = green_s
+                    colour2_b = blue_s;
+                    break;
+    case oc_invert: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0xff - red_p;
+                    colour2_g = 0xff - green_p
+                    colour2_b = 0xff - blue_p;
+                    break;
+    case oc_random: colour1_r = (random_hold >> 16) & 0xff;
+                    colour1_g = (random_hold >> 8) & 0xff;
+                    colour1_b = (random_hold) & 0xff;
+                    colour2_r = 0xff - colour1_r;
+                    colour2_g = 0xff - colour1_g;
+                    colour2_b = 0xff - colour1_b; //random and random invert, right??
+                    break;
+    case oc_single:
+    case default:   colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0;
+                    colour2_g = 0;
+                    colour2_b = 0;
+                    break;
+    }
+  }
+  if(j >=256){
+      j = 0;
+      direction = !direction;
+  }
 
-
-
+    if(direction) prim = (float)j/256;
+    else          prim = (float)(256 - j)/256;
+    sec = 1.0 - prim;
+    fin_r = (colour1_r * prim) + (colour2_r * sec);
+    fin_g = (colour1_g * prim) + (colour2_g * sec);
+    fin_b = (colour1_b * prim) + (colour2_b * sec);
+    for(int i = 0; i < pixelCount; i++) {
+      strip.setPixelColor(i,fin_r,fin_g,fin_b);
+    }
+    j++;
 }
 
 void colourSlide(){
@@ -306,6 +416,7 @@ void getData(int data_length){
       green_p = input[2];
       blue_p = input[3];
       switched_off = false;
+      recalc_colour = true;
     }
     if((data_length == 9) && ((input[8] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
       option_slider = check_slider(input[4]);
@@ -321,15 +432,11 @@ void getData(int data_length){
 /***********************************main loop*****************************************/
 void loop() {
 
-  if(Serial.available() == 4){        //should be 4 bytes in original version
-      getData(4);
-   }else if(Serial.available() == 9){ //update to 9 byte packets for 2 colour picker
+  if(Serial.available() == 9){ //9 byte packets for 2 colour picker
       getData(9);
    }else if(Serial.available() > 0){   //don't bother if there are no bytes in the buffer.
     delay(1);                       //give it another chance if mid-message
-    if(Serial.available() == 4){
-      getData(4);
-    }else if(Serial.available() == 9){
+    if(Serial.available() == 9){
       getData(9);
     }else{
       byte x;
@@ -401,11 +508,10 @@ if !(switched_off){
 
 /*---------------------------------------------
 byte 0 - 0x5yyyy;  yyyy = 4 bit routine
-byte 1 - red1
-byte 2 - green1
-byte 3 - blue1 - 4 byte mode will only include these bytes
-
-byte 4 - slider value
+byte 1 - slider value 0 -> 100
+byte 2 - red1
+byte 3 - green1
+byte 4 - blue1
 byte 5 - red2
 byte 6 - green2
 byte 7 - blue2
