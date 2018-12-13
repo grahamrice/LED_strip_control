@@ -189,10 +189,68 @@ void rainbowChunks(){
   }
   for(int i = 0; i < pixelCount; i++) {
     if (i - loRes > slider) loRes += slider;
-    holder.pixel_set(i,Wheel(loRes+j));
+    holder.pixel_set(i,Wheel(loRes+j));      //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
     //strip.setPixelColor(i,Wheel(loRes+j));
   }
   j++;
+}
+
+void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
+  static int width = 1;
+  static uint32_t rbow_colurs[8];
+  if (recalc_colour) {
+    width = 1 + ((50 + option_slider) >> 4);
+    pulseCounter = 0 - 8 - width ;
+
+    for(int i = 0; i < 255; i+=36){ //8 options
+      rbow_colurs[i] = Wheel(i); //spread colours over pulse length
+    }
+  }
+
+  if(pulseCounter >= 8 + width + pixelCount){
+      pulseCounter = 0 - 8 - width ;
+      routineCounter = 0;
+      j++;
+      if((j & 7) == 0) direction = !direction; //change direction when all colours have cycled
+   }
+
+   for(int i=0; i<pixelCount; i++){
+     if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
+       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[ j & 0x7 ] );
+     }
+   }
+
+
+}
+
+#define MAX_WIDTH 18
+void rainbowComet() { //comet of all rainbow colours in a short pulse (should look very mariokart rainbow road)
+  static int width = 1;
+  static uint32_t rbow_colurs[MAX_WIDTH];
+  int j;
+  if (recalc_colour) {
+    width = 1 + ((50 + option_slider) >> 4);
+    pulseCounter = 0 - 8 - width ;
+
+    for(int i = 0; i < 8 + width; i++){
+      rbow_colurs[i] = Wheel((i * 255)/8+width); //spread colours over pulse length
+    }
+  }
+
+  if(pulseCounter >= 8 + width + pixelCount){
+      pulseCounter = 0 - 8 - width ;
+      routineCounter = 0;
+      partyState++;
+      direction = !direction;
+   }
+
+  j = 0;
+  for(int i=0; i<pixelCount; i++){
+    if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[j++] );
+    }
+  }
+
 }
 
 void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
@@ -251,7 +309,7 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
     pulseCounter = 0 - 8 - width ;
   }
 
-  strip.clear();
+  //strip.clear();
 
   if(pulseCounter >= 8 + width + pixelCount){
       pulseCounter = 0 - 8 - width ;
@@ -264,16 +322,16 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
    for(int i=0; i<pixelCount; i++){
      if((pulseCounter <= i)&&(i < pulseCounter + 4)) { //"before" the pulse
         index = 3 - i - pulseCounter;
-        holder.pixel_set((direction) ?  pixelCount - i - 1 : pulseCounter, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
+        holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
         //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
      }
      else if((pulseCounter + 4 + width <= i)&&(i < pulseCounter + 8 + width)) { //"after" the pulse
        index = i - pulseCounter - 4 - width;
-       holder.pixel_set((direction) ?  pixelCount - i - 1 : pulseCounter, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
+       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
        //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
    }
    else if((pulseCounter + 4 <= i)&&(i < pulseCounter + 4 + width)){ //during the pulse
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : pulseCounter, strip.Color(colour2_r,colour1_g,colour1_b) );
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour1_g,colour1_b) );
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
    }
    else{    //in the secondary colour space
@@ -347,8 +405,13 @@ void colourFade(){
     j++;
 }
 
-void colourSlide(){
+void colourSlide(){ //like a snail
 
+
+
+}
+
+void colourComet(){
 
 
 }
