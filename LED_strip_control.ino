@@ -10,11 +10,14 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, led, NEO_GRB + NEO_KHZ80
 
 pixel_hold holder = pixel_hold();
 
-enum routine_t { rainbowR, rainbowChunksR, colourPulseR, colourChunksR, colourWipeR, colourFadeR, colourSlideR, solidColourR, offR};
+enum routine_t { rainbowR, rainbowChunksR, rainbowPulseR, rainbowCometR, colourCometR, colourPulseR, colourChunksR, colourWipeR, colourFadeR, colourSlideR, solidColourR, offR};
 
 enum colour_opt_t {oc_single, oc_double, oc_invert, oc_random};
 
-enum mode_opt_t {om_normal, om_theatre, om_strobe};
+#define OM_NORMAL  0x1
+#define OM_THEATRE 0x2
+#define OM_STROBE  0x4
+#define OM_ALL     0x7
 
 routine_t currentRoutine = offR;
 
@@ -412,6 +415,71 @@ void colourSlide(){ //like a snail
 }
 
 void colourComet(){
+  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, width = 1;
+  uint32_t fin_1,fin_2;
+  static uint32_t fade[8];
+  int j;
+  if (recalc_colour) {
+    width = 1 + (option_slider >> 4);
+    pulseCounter = 0 - 8 - width ;
+    switch(option_colour){
+    case oc_double: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = red_s;
+                    colour2_g = green_s;
+                    colour2_b = blue_s;
+                    break;
+    case oc_invert: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0xff - red_p;
+                    colour2_g = 0xff - green_p;
+                    colour2_b = 0xff - blue_p;
+                    break;
+    case oc_random: colour1_r = (random_hold >> 16) & 0xff;
+                    colour1_g = (random_hold >> 8) & 0xff;
+                    colour1_b = (random_hold) & 0xff;
+                    colour2_r = 0xff - colour1_r;
+                    colour2_g = 0xff - colour1_g;
+                    colour2_b = 0xff - colour1_b; //random and random invert, right??
+                    break;
+    //case oc_single: redundant line if default
+    default:        colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0;
+                    colour2_g = 0;
+                    colour2_b = 0;
+                    break;
+    }
+
+    fin_1 = strip.Color(colour1_r, colour1_g, colour1_b);
+    fin_2 = strip.Color(colour2_r, colour2_g, colour2_b);
+
+    for(int m = 0, n = 7; m < 8; m++, n--){
+      fade[m] = strip.Color( ((colour1_r*n)>>3) + ((colour2_r*m)>>3) , ((colour1_g*n)>>3) + ((colour2_g*m)>>3), ((colour1_b*n)>>3) + ((colour2_b*m)>>3));
+    }
+  }
+
+  if(pulseCounter >= 8 + width + pixelCount){
+      pulseCounter = 0 - 8 - width ;
+      routineCounter = 0;
+      partyState++;
+      direction = !direction;
+   }
+
+  j = 0;
+  for(int i=0; i<pixelCount; i++){
+    if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + width)){  //within bulk of the comet
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 );
+    }else if((i >= pulseCounter) && (i < pulseCounter + 8)){ //within comet tail
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[j] );
+    }else{ //outside of comet, use second colour
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 );
+    }
+  }
+
 
 
 }
@@ -448,12 +516,13 @@ void apply_normal(){
 void apply_mode(uint8_t check,int del){
   //use check to disable features for certain modes
   //delay is the delay under normal operation
-  switch(option_mode){
-    om_theatre: apply_theatre();
+  uint8_t thing = option_mode & check;
+  switch(thing){
+    OM_THEATRE: apply_theatre();
                 break;
-    om_strobe:  apply_strobe();
+    OM_STROBE:  apply_strobe();
                 break;
-    om_normal:
+    OM_NORMAL:
     default:    apply_normal();
                 strip.show();
                 delay(del);
@@ -530,27 +599,35 @@ uint8_t check_slider(uint8_t input)
 
 void update_slider()
 {
-  if(option_mode == om_normal) option_slider = latest_slider; //update value when in normal mode
+  if(option_mode == OM_NORMAL) option_slider = latest_slider; //update value when in normal mode
+}
+
+uint8_t check_mode(uint8_t input){
+  uint8_t result = 0;
+  switch(input){
+    case 1: result = OM_THEATRE;
+    case 2: result = OM_STROBE;
+    default: result = OM_NORMAL;
+  }
+  return result;
 }
 
 /* see bottom of file for data packet structure*/
 void getData(int data_length){
     byte input[9]; // = {0,0,0,0};
     Serial.readBytes(&input[0],data_length);
-    if(0x50 == (input[0] & 0xf0)){            //upper 4 bits == 0x5X
+    if((0x50 == (input[0] & 0xf0))  && ((input[8] & 0x0f) == 0x0a)) {            //upper 4 bits == 0x5X, last 4 bits == 0x0a
       currentRoutine = input[0] & 0x0f;
       red_p = input[1];
       green_p = input[2];
       blue_p = input[3];
       switched_off = false;
       recalc_colour = true;
-    }
-    if((data_length == 9) && ((input[8] & 0x0f) == 0x0a)){  //last 4 bits == 0x0a
       red_s = input[5];
       green_s = input[6];
       blue_s = input[7];
       option_colour = (input[8] >> 6) & 0x03;
-      option_mode   = (input[8] >> 4) & 0x03;
+      option_mode   = check_mode((input[8] >> 4) & 0x03);
       latest_slider = check_slider(input[4]);
       update_slider();
     }
@@ -581,44 +658,37 @@ digitalWrite(13, ++toggle & 0x04);
 if (!switched_off){
    switch(currentRoutine){
     rainbowR:         rainbow();
-                      apply_mode(0xff,30);
-                      //strip.show();
-                      //wait(30);
+                      apply_mode(OM_ALL,30);
                       break;
     rainbowChunksR:   rainbowChunks();
-                      apply_mode(0xff,100);
-                      //strip.show();
-                      //wait(100);
+                      apply_mode(OM_ALL,100);
+                      break;
+    rainbowPulseR:    rainbowPulse();
+                      apply_mode(OM_ALL,100);
+                      break;
+    rainbowCometR:    rainbowComet();
+                      apply_mode(OM_ALL,100);
+                      break;
+    colourCometR:     colourComet();
+                      apply_mode(OM_ALL,100);
                       break;
     colourPulseR:     colourPulse();
-                      apply_mode(0xff,100);
-                      //strip.show();
-                      //wait(100);
+                      apply_mode(OM_ALL,100);
                       break;
     colourChunksR:    colourChunks();
-                      apply_mode(0xff,100);
-                      //strip.show();
-                      //wait(100);
+                      apply_mode(OM_ALL,100);
                       break;
     colourWipeR:      colourWipe();
-                      apply_mode(0xff,((option_slider > 10) ? option_slider : 10));
-                      //strip.show();
-                      //wait((option_slider > 10) ? option_slider : 10);
+                      apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
                       break;
     colourFadeR:      colourFade();
-                      apply_mode(0xff,((option_slider > 10) ? option_slider : 10));
-                      //strip.show();
-                      //wait((option_slider > 10) ? option_slider : 10);
+                      apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
                       break;
     colourSlideR:     colourSlide();
-                      apply_mode(0xff,100);
-                      //strip.show();
-                      //wait(100);
+                      apply_mode(OM_ALL,100);
                       break;
     solidColourR:     colourSolid();
-                      apply_mode(0xff,100);
-                      //strip.show();
-                      //wait(100);
+                      apply_mode(OM_ALL,100);
                       break;
     offR:             if(!switched_off){
                         switched_off = true;
@@ -631,6 +701,7 @@ if (!switched_off){
                       break;
    }
    if(0 == --random_counter) get_random(); //change random value
+   pulseCounter++;
   }
 }
 
