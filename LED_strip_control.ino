@@ -346,8 +346,8 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
 }
 
 void colourChunks(){
-  holder.pixel_setall(0); //just do something for now
 
+  colourFade();  //will write later, cba
 
 }
 
@@ -409,14 +409,73 @@ void colourFade(){
 }
 
 void colourSlide(){ //like a snail
+  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, extend_lim = 3, extend;
+  static uint32_t fin_1,fin_2;
+  static bool ext_con = true; //true to extend, False to contract
+  if (recalc_colour) {
+    extend_lim = 1 + (option_slider >> 4);
+    switch(option_colour){
+    case oc_double: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = red_s;
+                    colour2_g = green_s;
+                    colour2_b = blue_s;
+                    break;
+    case oc_invert: colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0xff - red_p;
+                    colour2_g = 0xff - green_p;
+                    colour2_b = 0xff - blue_p;
+                    break;
+    case oc_random: colour1_r = (random_hold >> 16) & 0xff;
+                    colour1_g = (random_hold >> 8) & 0xff;
+                    colour1_b = (random_hold) & 0xff;
+                    colour2_r = 0xff - colour1_r;
+                    colour2_g = 0xff - colour1_g;
+                    colour2_b = 0xff - colour1_b; //random and random invert, right??
+                    break;
+    //case oc_single: redundant line if default
+    default:        colour1_r = red_p;
+                    colour1_g = green_p;
+                    colour1_b = blue_p;
+                    colour2_r = 0;
+                    colour2_g = 0;
+                    colour2_b = 0;
+                    break;
+    }
+    fin_1 = strip.Color(colour1_r, colour1_g, colour1_b);
+    fin_2 = strip.Color(colour2_r, colour2_g, colour2_b);
+  }
+  if(pulseCounter >= 6 + extend_lim + pixelCount){
+      pulseCounter = 0 - 6 - extend_lim ;
+      routineCounter = 0;
+      partyState++;
+      direction = !direction;
+      extend = 0; //extend represents the fron position, pulseCounter the rear
+   }else{
+      if (ext_con){
+        extend++;
+        pulseCounter--; //counteract what happens in the main loop
+      }else extend--;   //else increment pulseCounter up one, but hold the end position in the same place by decrementing
+      if (extend >= extend_lim) ext_con = false;
+      else if (extend <= 0) ext_con = true;
+   }
 
-
-
+  j = 0;
+  for(int i=0; i<pixelCount; i++){
+    if((i >= pulseCounter) && (i < pulseCounter + 6 + extend)){  //within bulk of the snail
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 );
+    }else{ //outside of comet, use second colour
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 );
+    }
+  }
 }
 
 void colourComet(){
   static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, width = 1;
-  uint32_t fin_1,fin_2;
+  static uint32_t fin_1,fin_2;
   static uint32_t fade[8];
   int j;
   if (recalc_colour) {
@@ -518,11 +577,11 @@ void apply_mode(uint8_t check,int del){
   //delay is the delay under normal operation
   uint8_t thing = option_mode & check;
   switch(thing){
-    OM_THEATRE: apply_theatre();
+    case OM_THEATRE: apply_theatre();
                 break;
-    OM_STROBE:  apply_strobe();
+    case OM_STROBE:  apply_strobe();
                 break;
-    OM_NORMAL:
+    case OM_NORMAL:
     default:    apply_normal();
                 strip.show();
                 delay(del);
