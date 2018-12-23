@@ -1,7 +1,9 @@
 #include "pixel_hold.h"
+#include <stdlib.h>
 
 pixel_hold::pixel_hold(void){
  //don't need to do anything
+ pixel_values = (uint32_t *)malloc(pixelCount);
 }
 
 uint32_t pixel_hold::pixel_get(uint8_t p){
