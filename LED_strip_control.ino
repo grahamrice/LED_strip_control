@@ -2,15 +2,26 @@
 #include <Adafruit_NeoPixel.h>
 #include "pixel_hold.h"
 
-const int led = 2;      //for the strip!
+//const int led = 2;      //for the strip!
 
-#define pixelCount 96
+#define pixelCount 6//96
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, led, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, 2, NEO_GRB + NEO_KHZ800);
 
 pixel_hold holder = pixel_hold();
 
-enum routine_t { rainbowR, rainbowChunksR, rainbowPulseR, rainbowCometR, colourCometR, colourPulseR, colourChunksR, colourWipeR, colourFadeR, colourSlideR, solidColourR, offR};
+#define rainbowR 0
+#define rainbowChunksR 1
+#define rainbowPulseR 2
+#define rainbowCometR 3
+#define colourCometR 4
+#define colourPulseR 5
+#define colourChunksR 6
+#define colourWipeR 7
+#define colourFadeR 8
+#define colourSlideR 9
+#define solidColourR 0xA
+#define offR 0xB
 
 enum colour_opt_t {oc_single, oc_double, oc_invert, oc_random};
 
@@ -19,11 +30,10 @@ enum colour_opt_t {oc_single, oc_double, oc_invert, oc_random};
 #define OM_STROBE  0x4
 #define OM_ALL     0x7
 
-routine_t currentRoutine = offR;
+uint8_t currentRoutine = rainbowR;
 
 int partyState = 0;
 int pulseCounter = 0;
-uint16_t routineCounter = 0;
 uint8_t theatre_counter = 0;
 
 uint32_t solidColourHolder = 0x00000000;      //laziness
@@ -37,7 +47,7 @@ uint8_t latest_slider = 0;  //most up to date slider for the strobe and theatre 
 
 byte toggle = 0;
 
-bool switched_off = true;
+bool switched_off = false;
 bool direction = false; //false count up, true count down
 bool set_clear = false; //false for colour1, true for colour2
 
@@ -98,7 +108,8 @@ uint32_t Wheel(byte WheelPos) {
 }
 
 /***********************************LED strip functions*********************************************************/
-uint8_t j = 0; //use routineCounter for small counter and j for direction changes
+uint8_t routineCounter = 0; //use j for small counter as a local var in functions 
+                            //routineCounter for direction changes and sequence control
 
 
 // Fill the dots one after the other with a color
@@ -121,10 +132,10 @@ void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir,
     }
     recalc_colour = false;
   }
-  if(routineCounter >=pixelCount){
-      routineCounter = 0;
-      j++;
-      switch(j){ //perhaps move this into a function if the bools make sense for other routines.
+  if(pulseCounter >=pixelCount){
+      pulseCounter = 0;
+     routineCounter++;
+      switch(routineCounter){ //perhaps move this into a function if the bools make sense for other routines.
         case 1: direction = false; //second colour L->R
                 set_clear = true;
                 break;
@@ -137,16 +148,16 @@ void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir,
         case 4: direction = false; //first colour L->R
                 set_clear = false;
                 break;
-        default: j = 0;
+        default: routineCounter = 0;
                 direction = false;
                 set_clear = false;
                 break;
       }
    }
-   holder.pixel_set((direction) ? pixelCount - routineCounter - 1 : routineCounter, (set_clear)? colour2 : colour1);
+   //holder.pixel_set((direction) ? pixelCount - pulseCounter - 1 : pulseCounter, (set_clear)? colour2 : colour1); this one
    //strip.setPixelColor((direction) ? pixelCount - routineCounter - 1 : routineCounter, (set_clear)? colour2 : colour1);      //if reverse is true, start from last pixel
    //strip.show();
-    routineCounter++;
+    
 }
 
 void colourSolid() {
@@ -164,7 +175,7 @@ void colourSolid() {
                       break;
     }
   }
-  holder.pixel_setall(oneBigColour);
+ // holder.pixel_setall(oneBigColour); this one
   /*for(uint16_t i=0; i<pixelCount; i++) {
       strip.setPixelColor(i,oneBigColour);
     }*/
@@ -173,29 +184,29 @@ void colourSolid() {
 
 
 void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows across pixels - 400 for simplicity, will go up to 1.56 rainbows across
-    uint16_t slider = option_slider << 2;
-    if(j >=256){
-        j = 0;
+    uint16_t slider = 1 + (option_slider << 2);
+    if(routineCounter >=256){
+        routineCounter = 0;
       }
       for(int i=0; i< strip.numPixels(); i++) {
-        holder.pixel_set(i, Wheel(((i * slider / strip.numPixels()) + j) & 255));
-        //strip.setPixelColor(i, Wheel(((i * slider / strip.numPixels()) + j) & 255)); //halving to 128 spreads the full spectrum over unused pixels
+        holder.pixel_set(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255));// this one
+        //strip.setPixelColor(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255)); //halving to 128 spreads the full spectrum over unused pixels
       }
-      j++;
+      routineCounter++;
   }
 
 void rainbowChunks(){
   uint16_t slider = option_slider >> 2; // slider controls width of chunks of the same colour
   uint16_t loRes = 0; //low resolution counter instead of relying on this thing to do integer divides
-  if(j >=256){
-      j = 0;
+  if(routineCounter >=256){
+      routineCounter = 0;
   }
   for(int i = 0; i < pixelCount; i++) {
     if (i - loRes > slider) loRes += slider;
-    holder.pixel_set(i,Wheel(loRes+j));      //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
-    //strip.setPixelColor(i,Wheel(loRes+j));
+    //holder.pixel_set(i,Wheel(loRes+routineCounter));  this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
+    //strip.setPixelColor(i,Wheel(loRes+routineCounter));
   }
-  j++;
+  routineCounter++;
 }
 
 void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
@@ -212,14 +223,13 @@ void rainbowPulse(){ //single coloured pulse that fires across screen, cycles th
 
   if(pulseCounter >= 8 + width + pixelCount){
       pulseCounter = 0 - 8 - width ;
-      routineCounter = 0;
-      j++;
-      if((j & 7) == 0) direction = !direction; //change direction when all colours have cycled
+      routineCounter++;
+      if((routineCounter & 7) == 0) direction = !direction; //change direction when all colours have cycled
    }
 
    for(int i=0; i<pixelCount; i++){
      if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
-       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[ j & 0x7 ] );
+       //holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[ routineCounter & 0x7 ] ); this one
      }
    }
 
@@ -242,7 +252,6 @@ void rainbowComet() { //comet of all rainbow colours in a short pulse (should lo
 
   if(pulseCounter >= 8 + width + pixelCount){
       pulseCounter = 0 - 8 - width ;
-      routineCounter = 0;
       partyState++;
       direction = !direction;
    }
@@ -250,7 +259,7 @@ void rainbowComet() { //comet of all rainbow colours in a short pulse (should lo
   j = 0;
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[j++] );
+     // holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[j++] ); this one
     }
   }
 
@@ -325,20 +334,20 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
    for(int i=0; i<pixelCount; i++){
      if((pulseCounter <= i)&&(i < pulseCounter + 4)) { //"before" the pulse
         index = 3 - i - pulseCounter;
-        holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
+       // holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); this one
         //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
      }
      else if((pulseCounter + 4 + width <= i)&&(i < pulseCounter + 8 + width)) { //"after" the pulse
        index = i - pulseCounter - 4 - width;
-       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) );
+     //  holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); this one
        //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
    }
    else if((pulseCounter + 4 <= i)&&(i < pulseCounter + 4 + width)){ //during the pulse
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour1_g,colour1_b) );
+    //  holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour1_g,colour1_b) ); this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
    }
    else{    //in the secondary colour space
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour2_g,colour2_b));
+     // holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour2_g,colour2_b)); this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour2_g,colour2_b);
    }
    }
@@ -390,22 +399,22 @@ void colourFade(){
                     break;
     }
   }
-  if(j >=256){
-      j = 0;
+  if(routineCounter >=256){
+      routineCounter = 0;
       direction = !direction;
   }
 
-    if(direction) prim = (float)j/256;
-    else          prim = (float)(256 - j)/256;
+    if(direction) prim = (float)routineCounter/256;
+    else          prim = (float)(256 - routineCounter)/256;
     sec = 1.0 - prim;
     fin_r = (colour1_r * prim) + (colour2_r * sec);
     fin_g = (colour1_g * prim) + (colour2_g * sec);
     fin_b = (colour1_b * prim) + (colour2_b * sec);
     for(int i = 0; i < pixelCount; i++) {
-      holder.pixel_set(i, strip.Color(fin_r,fin_g,fin_b));
+     // holder.pixel_set(i, strip.Color(fin_r,fin_g,fin_b)); this one
       //strip.setPixelColor(i,fin_r,fin_g,fin_b);
     }
-    j++;
+    routineCounter++;
 }
 
 void colourSlide(){ //like a snail
@@ -463,12 +472,11 @@ void colourSlide(){ //like a snail
       else if (extend <= 0) ext_con = true;
    }
 
-  j = 0;
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter) && (i < pulseCounter + 6 + extend)){  //within bulk of the snail
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 );
+    //  holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 ); this one
     }else{ //outside of comet, use second colour
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 );
+     // holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 ); this one
     }
   }
 }
@@ -531,11 +539,11 @@ void colourComet(){
   j = 0;
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + width)){  //within bulk of the comet
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 );
+    //  holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 ); this one
     }else if((i >= pulseCounter) && (i < pulseCounter + 8)){ //within comet tail
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[j] );
+ //     holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[j++] ); this one
     }else{ //outside of comet, use second colour
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 );
+   //   holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 ); this one
     }
   }
 
@@ -549,7 +557,7 @@ void apply_theatre(){
   //will loop through once before returning
   uint8_t time_del = (latest_slider >> 1) + 25;
   if(theatre_counter > 2) theatre_counter = 0;
-  for(int f = 0; f < pixelCount; f+=3) strip.setPixelColor(f+theatre_counter,holder.pixel_get(f+theatre_counter));
+  //for(int f = 0; f < pixelCount; f+=3) strip.setPixelColor(f+theatre_counter,holder.pixel_get(f+theatre_counter)); this one
   strip.show();
   delay(time_del);
   for(int f = 0; f < pixelCount; f+=3) strip.setPixelColor(f+theatre_counter,0);
@@ -558,7 +566,7 @@ void apply_theatre(){
 
 void apply_strobe(){
   uint16_t time_off = (1 + (latest_slider >> 3))  * STROBE_OFF_T; //0->100 becomes 1->13, * OFF time
-  for(int f = 0; f < pixelCount; f++) strip.setPixelColor(f,holder.pixel_get(f));
+ // for(int f = 0; f < pixelCount; f++) strip.setPixelColor(f,holder.pixel_get(f)); this one
   strip.setBrightness(0xf0);
   strip.show();
   delay(STROBE_ON_T);
@@ -569,7 +577,15 @@ void apply_strobe(){
 }
 
 void apply_normal(){
-  for(int f = 0; f < pixelCount; f++) strip.setPixelColor(f,holder.pixel_get(f));
+  //for(int f = 0; f < pixelCount; f++) strip.setPixelColor(f,holder.pixel_get(f));
+  uint8_t temp[18];
+  for(int f = 0; f < 6; f++){
+    strip.setPixelColor(f,holder.pixel_get(f));
+    temp[f*3]     = (strip.getPixelColor(f) >> 16) & 0xff;
+    temp[f*3 + 1] = (strip.getPixelColor(f) >> 8) & 0xff;
+    temp[f*3 + 2] = (strip.getPixelColor(f)) & 0xff;
+  }
+  Serial.write(temp,18);
 }
 
 void apply_mode(uint8_t check,int del){
@@ -583,6 +599,7 @@ void apply_mode(uint8_t check,int del){
                 break;
     case OM_NORMAL:
     default:    apply_normal();
+                //Serial.write(del);
                 strip.show();
                 delay(del);
                 break;
@@ -616,13 +633,13 @@ void apply_mode(uint8_t check,int del){
 //Theatre-style crawling lights with rainbow effect
 /*void theaterChaseRainbow(uint8_t wait, bool reverse) {
   //for (int j=0; j < 256; j++) {     // cycle all 256 colors in the wheel
-   if(j >=256){
-      j = 0;
+   if(routineCounter >=256){
+      routineCounter = 0;
       partyState++;
     }
     for (int q=0; q < 3; q++) {
       for (int i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor((reverse) ? strip.numPixels() - i -q - 1 : i+q, Wheel( (i+j) % 255));    //turn every third pixel on
+        strip.setPixelColor((reverse) ? strip.numPixels() - i -q - 1 : i+q, Wheel( (i+routineCounter) % 255));    //turn every third pixel on
       }
       strip.show();
 
@@ -632,7 +649,7 @@ void apply_mode(uint8_t check,int del){
         strip.setPixelColor((reverse) ? strip.numPixels() - i -q - 1 : i+q, 0);        //turn every third pixel off
       }
     }
-    j++;
+    routineCounter++;
   //}
 }*/
 
@@ -641,11 +658,14 @@ void apply_mode(uint8_t check,int del){
 
 void setup() {
   // initialize digital pin 13 as an output.
+  uint8_t byte_buf[3] = {0x11, 0x22, 0x33};
   pinMode(13, OUTPUT);
   Serial.begin(115200);
   random_hold = random(0x1000000);
+  toggle = 0;
   strip.begin();
   strip.show();
+ // Serial.write(byte_buf,3);
 }
 
 /*-------------------------------get data--------------------------------------------*/
@@ -674,12 +694,13 @@ uint8_t check_mode(uint8_t input){
 /* see bottom of file for data packet structure*/
 void getData(int data_length){
     byte input[9]; // = {0,0,0,0};
+    byte temp[6];
     Serial.readBytes(&input[0],data_length);
     if((0x50 == (input[0] & 0xf0))  && ((input[8] & 0x0f) == 0x0a)) {            //upper 4 bits == 0x5X, last 4 bits == 0x0a
       currentRoutine = input[0] & 0x0f;
-      red_p = input[1];
-      green_p = input[2];
-      blue_p = input[3];
+      red_p = input[2];
+      green_p = input[3];
+      blue_p = input[4];
       switched_off = false;
       recalc_colour = true;
       red_s = input[5];
@@ -687,8 +708,17 @@ void getData(int data_length){
       blue_s = input[7];
       option_colour = (input[8] >> 6) & 0x03;
       option_mode   = check_mode((input[8] >> 4) & 0x03);
-      latest_slider = check_slider(input[4]);
+      latest_slider = check_slider(input[1]);
       update_slider();
+      input[0] ^= 0xff;
+      input[8] ^= 0xff;
+    temp[0] = currentRoutine;
+    temp[1] = red_p;
+    temp[2] = green_p;
+    temp[3] = blue_p;
+    temp[4] = option_mode;
+    temp[5] = latest_slider;
+    Serial.write( temp ,6);
     }
 }
 
@@ -712,56 +742,59 @@ void loop() {
 
    //blink LED? or flash/toggle LED everytime data is received or whatever so we know if it is crashing in this routine. Or is it getting stuck in while serial.available >0?
    //would an interrupt be better?
-digitalWrite(13, ++toggle & 0x04);
+   if((++toggle & 0x04) == 0x04) digitalWrite(13, HIGH );
+   else digitalWrite(13, LOW );
 //delay(100);
 if (!switched_off){
    switch(currentRoutine){
-    rainbowR:         rainbow();
-                      apply_mode(OM_ALL,30);
-                      break;
-    rainbowChunksR:   rainbowChunks();
-                      apply_mode(OM_ALL,100);
-                      break;
-    rainbowPulseR:    rainbowPulse();
-                      apply_mode(OM_ALL,100);
-                      break;
-    rainbowCometR:    rainbowComet();
-                      apply_mode(OM_ALL,100);
-                      break;
-    colourCometR:     colourComet();
-                      apply_mode(OM_ALL,100);
-                      break;
-    colourPulseR:     colourPulse();
-                      apply_mode(OM_ALL,100);
-                      break;
-    colourChunksR:    colourChunks();
-                      apply_mode(OM_ALL,100);
-                      break;
-    colourWipeR:      colourWipe();
-                      apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
-                      break;
-    colourFadeR:      colourFade();
-                      apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
-                      break;
-    colourSlideR:     colourSlide();
-                      apply_mode(OM_ALL,100);
-                      break;
-    solidColourR:     colourSolid();
-                      apply_mode(OM_ALL,100);
-                      break;
-    offR:             if(!switched_off){
-                        switched_off = true;
-                        colourSolid();
-                        strip.show();
-                      }
-                      delay(100);
-                      break;
-    default:          currentRoutine = offR;
-                      break;
+    case rainbowR:       rainbow();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case rainbowChunksR: rainbowChunks();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case rainbowPulseR:  rainbowPulse();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case rainbowCometR:  rainbowComet();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case colourCometR:   colourComet();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case colourPulseR:   colourPulse();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case colourChunksR:  colourChunks();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case colourWipeR:    colourWipe();
+                         apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
+                         break;
+    case colourFadeR:    colourFade();
+                         apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
+                         break;
+    case colourSlideR:   colourSlide();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case solidColourR:   colourSolid();
+                         apply_mode(OM_ALL,100);
+                         break;
+    case offR:           if(!switched_off){
+                           switched_off = true;
+                           colourSolid();
+                           strip.show();
+                         }
+                         delay(100);
+                         break;
+    default:            currentRoutine = offR;
+                        break;
    }
-   if(0 == --random_counter) get_random(); //change random value
+   //Serial.write(currentRoutine);
+   /*if(0 == --random_counter) get_random(); //change random value*/
    pulseCounter++;
   }
+  if(switched_off) delay(100);
 }
 
 /*---------------------------------------------
