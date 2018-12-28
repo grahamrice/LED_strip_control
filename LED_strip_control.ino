@@ -30,7 +30,7 @@ enum colour_opt_t {oc_single, oc_double, oc_invert, oc_random};
 #define OM_STROBE  0x4
 #define OM_ALL     0x7
 
-uint8_t currentRoutine = rainbowChunksR;
+uint8_t currentRoutine = rainbowR;
 
 int partyState = 0;
 int pulseCounter = 0;
@@ -40,7 +40,7 @@ uint32_t solidColourHolder = 0x00000000;      //laziness
 uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colours
 uint8_t red_s = 0, green_s = 0, blue_s = 0; //secondary colours
 
-uint8_t option_mode   = 0; //normal, strobe, theatrechase
+uint8_t option_mode   = OM_THEATRE; //normal, strobe, theatrechase
 uint8_t option_colour = 0; //single,double, invert, random
 uint8_t option_slider = 0; //does not change when in strobe or theatre chase modes
 uint8_t latest_slider = 0;  //most up to date slider for the strobe and theatre chase options
@@ -94,7 +94,7 @@ uint32_t get_random(){
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
-uint32_t Wheel(byte WheelPos) {
+uint32_t Wheel(uint8_t WheelPos) {
   WheelPos = 255 - WheelPos;
   if(WheelPos < 85) {
     return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
@@ -196,31 +196,16 @@ void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows acros
   }
 
 void rainbowChunks(){
-  uint16_t slider = 5 + option_slider >> 2; // slider controls width of chunks of the same colour
-  uint8_t loRes = 0, shifter; //low resolution counter instead of relying on this thing to do integer divides
-  if(routineCounter >=pixelCount){
-      routineCounter = 0;
-  }
-  shifter = routineCounter - (routineCounter % slider);
-  //if(routineCounter > loRes + slider) loRes = routineCounter; //start here and let the colour cycle round
-  loRes = routineCounter;
-  for(int i = routineCounter; i < pixelCount; i++) {
-    if (i - loRes > slider){ 
-      loRes += slider;
-      shifter += slider;
-    }
-    holder.pixel_set(i,Wheel(shifter));  // this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
+  uint16_t slider = 10 + option_slider >> 1; // slider controls width of chunks of the same colour
+  uint8_t loRes = 0; //, shifter; //low resolution counter instead of relying on this thing to do integer divides
+
+  for(int i = 0; i < pixelCount; i++) {
+    loRes = routineCounter + (i * 3);
+    loRes -= (loRes % slider);
+    holder.pixel_set(i,Wheel(loRes));  // this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
     //strip.setPixelColor(i,Wheel(loRes+routineCounter));
   }
-  loRes = 0;
-  for(int i = 0; i < routineCounter; i++){
-    if (i - loRes > slider) {
-      loRes += slider;
-      shifter += slider;
-    }
-    holder.pixel_set(i,Wheel(shifter));  // this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
-  }
-  routineCounter++;
+  routineCounter+=3;
 }
 
 void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
@@ -607,12 +592,14 @@ void apply_mode(uint8_t check,int del){
   //delay is the delay under normal operation
   uint8_t thing = option_mode & check;
   switch(thing){
-    case OM_THEATRE: apply_theatre();
+    case OM_THEATRE: strip.setBrightness(0xff); 
+                  apply_theatre();
                 break;
     case OM_STROBE:  apply_strobe();
                 break;
     case OM_NORMAL:
-    default:    apply_normal();
+    default:    strip.setBrightness(0xff);
+                apply_normal();
                 //Serial.write(del);
                 strip.show();
                 delay(del);
@@ -697,11 +684,9 @@ void update_slider()
 
 uint8_t check_mode(uint8_t input){
   uint8_t result = 0;
-  switch(input){
-    case 1: result = OM_THEATRE;
-    case 2: result = OM_STROBE;
-    default: result = OM_NORMAL;
-  }
+  if(input == 1) result = OM_THEATRE;
+  else if(input == 2) result = OM_STROBE;
+  else result = OM_NORMAL;
   return result;
 }
 
