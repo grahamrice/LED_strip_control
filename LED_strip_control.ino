@@ -33,7 +33,7 @@ pixel_hold holder = pixel_hold();
 #define OM_STROBE  0x4
 #define OM_ALL     0x7
 
-uint8_t currentRoutine = rainbowPulseR;
+uint8_t currentRoutine = colourCometR;
 
 int partyState = 0;
 int pulseCounter = 0;
@@ -259,44 +259,52 @@ void rainbowPulse(){ //single coloured pulse that fires across screen, cycles th
 }
 
 #define MAX_WIDTH 18
+#define MIN_WIDTH  8
 void rainbowComet() { //comet of all rainbow colours in a short pulse (should look very mariokart rainbow road)
-  static int width = 1;
+  static int width = MIN_WIDTH;
   static uint32_t rbow_colurs[MAX_WIDTH];
   int j;
   if (recalc_colour) {
-    width = 1 + ((50 + option_slider) >> 4);
+    width = 8 + ((50 + option_slider) >> 4);
+    if (width > MAX_WIDTH) width = MAX_WIDTH;
+    if (width < MIN_WIDTH) width = MIN_WIDTH;
+    
     pulseCounter = 0 - 8 - width ;
 
-    for(int i = 0; i < 8 + width; i++){
-      rbow_colurs[i] = Wheel((i * 255)/8+width); //spread colours over pulse length
+    for(int i = 0; i < width; i++){
+      rbow_colurs[i] = Wheel((i * 255)/width); //spread colours over pulse length
     }
     recalc_colour = false;
   }
 
-  if(pulseCounter >= 8 + width + pixelCount){
-      pulseCounter = 0 - 8 - width ;
+  if(pulseCounter >= width + pixelCount){
+      pulseCounter = 0 - width ;
       partyState++;
       direction = !direction;
+      pause_time = 15;
    }
 
   j = 0;
   for(int i=0; i<pixelCount; i++){
-    if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
+    if((i >= pulseCounter) && (i < pulseCounter + width)){
+      if(j > MAX_WIDTH) j = 0;
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[j++] ); // this one
+    }else{
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, 0 ); // this one
     }
   }
 
 }
 
 void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
-  static int width = 1;
+  static uint8_t width = 1;
   static uint8_t r_fade[4] = {0,0,0,0};
   static uint8_t g_fade[4] = {0,0,0,0};
   static uint8_t b_fade[4] = {0,0,0,0};
   static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b;
-  uint8_t index = 0;
+  int index = 0;
   if (recalc_colour) {
-    width = 1 + (option_slider >> 4);
+    width = 1 + (option_slider >> 3);
     switch(option_colour){
     case OC_DOUBLE: colour1_r = red_p;
                     colour1_g = green_p;
@@ -345,37 +353,32 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
     recalc_colour = false;
   }
 
-  //strip.clear();
-
   if(pulseCounter >= 8 + width + pixelCount){
       pulseCounter = 0 - 8 - width ;
       routineCounter = 0;
       partyState++;
       direction = !direction;
+      pause_time = 10;
    }
 
-   /*for(int i = 0-8-width; i < pixelCount + 8 + width; i++){*/
+  
    for(int i=0; i<pixelCount; i++){
-     if((pulseCounter <= i)&&(i < pulseCounter + 4)) { //"before" the pulse
-        index = 3 - i - pulseCounter;
+     if((pulseCounter <= i)&&(i < (pulseCounter + 4))) { //"before" the pulse
+        index = 3 - (i - pulseCounter);
         holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); // this one
         //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
-     }
-     else if((pulseCounter + 4 + width <= i)&&(i < pulseCounter + 8 + width)) { //"after" the pulse
-       index = i - pulseCounter - 4 - width;
+     }else if(((pulseCounter + 4 + width) <= i)&&(i < (pulseCounter + 8 + width))) { //"after" the pulse
+       index = (i - pulseCounter) - 4 - width;
        holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); // this one
        //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
-   }
-   else if((pulseCounter + 4 <= i)&&(i < pulseCounter + 4 + width)){ //during the pulse
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour1_g,colour1_b) ); // this one
+   }else if(((pulseCounter + 4) <= i)&&(i < (pulseCounter + 4 + width))){ //during the pulse
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour1_r,colour1_g,colour1_b) ); // this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
-   }
-   else{    //in the secondary colour space
+   }else{    //in the secondary colour space
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour2_g,colour2_b)); // this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour2_g,colour2_b);
    }
    }
-    pulseCounter++;
 }
 
 void colourChunks(){
@@ -522,6 +525,8 @@ void colourComet(){
   int j;
   if (recalc_colour) {
     width = 1 + (option_slider >> 4);
+    if (width > MAX_WIDTH) width = MAX_WIDTH;
+    if (width < MIN_WIDTH) width = MIN_WIDTH;
     pulseCounter = 0 - 8 - width ;
     switch(option_colour){
     case OC_DOUBLE: colour1_r = red_p;
@@ -560,7 +565,7 @@ void colourComet(){
     recalc_colour = false;
 
     for(int m = 0, n = 7; m < 8; m++, n--){
-      fade[m] = strip.Color( ((colour1_r*n)>>3) + ((colour2_r*m)>>3) , ((colour1_g*n)>>3) + ((colour2_g*m)>>3), ((colour1_b*n)>>3) + ((colour2_b*m)>>3));
+      fade[n] = strip.Color( ((colour1_r*n)>>3) + ((colour2_r*m)>>3) , ((colour1_g*n)>>3) + ((colour2_g*m)>>3), ((colour1_b*n)>>3) + ((colour2_b*m)>>3));
     }
   }
 
@@ -569,6 +574,7 @@ void colourComet(){
       routineCounter = 0;
       partyState++;
       direction = !direction;
+      pause_time = 10;
    }
 
   j = 0;
@@ -576,13 +582,11 @@ void colourComet(){
     if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + width)){  //within bulk of the comet
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 ); // this one
     }else if((i >= pulseCounter) && (i < pulseCounter + 8)){ //within comet tail
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[j++] ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[i-pulseCounter] ); // this one
     }else{ //outside of comet, use second colour
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 ); // this one
     }
   }
-
-
 
 }
 
@@ -792,13 +796,13 @@ if (!switched_off){
                          apply_mode(OM_ALL,50);
                          break;
     case rainbowCometR:  rainbowComet();
-                         apply_mode(OM_ALL,100);
+                         apply_mode(OM_ALL,50);
                          break;
     case colourCometR:   colourComet();
-                         apply_mode(OM_ALL,100);
+                         apply_mode(OM_ALL,50);
                          break;
     case colourPulseR:   colourPulse();
-                         apply_mode(OM_ALL,100);
+                         apply_mode(OM_ALL,75);
                          break;
     case colourChunksR:  colourChunks();
                          apply_mode(OM_ALL,100);
