@@ -40,8 +40,10 @@ int pulseCounter = 0;
 uint8_t theatre_counter = 0;
 
 uint32_t solidColourHolder = 0x00000000;      //laziness
-uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colours
-uint8_t red_s = 0, green_s = 0, blue_s = 0; //secondary colours
+
+//these colours are those set by the user
+uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colour
+uint8_t red_s = 0, green_s = 0, blue_s = 0; //secondary colour
 
 uint8_t option_mode   = 0; //normal, strobe, theatrechase
 uint8_t option_colour = 0; //single,double, invert, random
@@ -64,6 +66,11 @@ uint8_t pause_time = 0;
 #define STROBE_OFF_T 23
 #define STROBE_ON_T  37
 
+//these global colours are used by functions to calculate fade colours etc.
+ uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b;
+
+ uint8_t routineCounter = 0; //use j for small counter as a local var in functions
+                             //routineCounter for direction changes and sequence control
 
 /*------------------------------- General functions--------------------------------------------------------*/
 
@@ -112,42 +119,63 @@ uint32_t Wheel(uint8_t WheelPos) {
   return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
 
-/***********************************LED strip functions*********************************************************/
-uint8_t routineCounter = 0; //use j for small counter as a local var in functions 
-                            //routineCounter for direction changes and sequence control
+uint32_t get_global_colour(int which){
+  if (which == 1) return strip.Color(colour1_r,colour1_g,colour1_b);
+  else return strip.Color(colour2_r,colour2_g,colour2_b);
+}
 
+void assign_colours(){
+  switch(option_colour){
+  case OC_DOUBLE: colour1_r = red_p;
+                  colour1_g = green_p;
+                  colour1_b = blue_p;
+                  colour2_r = red_s;
+                  colour2_g = green_s;
+                  colour2_b = blue_s;
+                  break;
+  case OC_INVERT: colour1_r = red_p;
+                  colour1_g = green_p;
+                  colour1_b = blue_p;
+                  colour2_r = 0xff - red_p;
+                  colour2_g = 0xff - green_p;
+                  colour2_b = 0xff - blue_p;
+                  break;
+  case OC_RANDOM: colour1_r = (random_hold >> 16) & 0xff;
+                  colour1_g = (random_hold >> 8) & 0xff;
+                  colour1_b = (random_hold) & 0xff;
+                  colour2_r = 0xff - colour1_r;
+                  colour2_g = 0xff - colour1_g;
+                  colour2_b = 0xff - colour1_b; //random and random invert, right??
+                  break;
+  case OC_SINGLE:
+  default:        colour1_r = red_p;
+                  colour1_g = green_p;
+                  colour1_b = blue_p;
+                  colour2_r = 0;
+                  colour2_g = 0;
+                  colour2_b = 0;
+                  break;
+  }
+}
+
+/***********************************LED strip functions*********************************************************/
 
 // Fill the dots one after the other with a color
 void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir, bool rev) {
- static uint32_t colour1, colour2;
-  if (recalc_colour){
-    switch(option_colour){
-      case OC_DOUBLE: colour1 = strip.Color(red_p, green_p, blue_p);
-                      colour2 = strip.Color(red_s, green_s, blue_s);
-                      break;
-      case OC_INVERT: colour1 = strip.Color(red_p, green_p, blue_p);
-                      colour2 = strip.Color(0xff - red_p, 0xff - green_p, 0xff - blue_p);
-                      break;
-      case OC_RANDOM: colour1 = random_hold;
-                      colour2 = 0;
-                      break;
-      case OC_SINGLE: 
-      default:        colour1 = strip.Color(red_p, green_p, blue_p);
-                      colour2 = 0;
-                      break;
-      }
+   if (recalc_colour){
+    assign_colours();
     recalc_colour = false;
   }
-  
+
   if (routineCounter > 3) routineCounter = 0;
-  
+
   if(pulseCounter >=pixelCount){
       pulseCounter = 0;
-      if(routineCounter == 0){ 
+      if(routineCounter == 0){
         direction = false; //first colour L->R
         set_clear = false;
         routineCounter = 1;
-      }else if(routineCounter == 1){ 
+      }else if(routineCounter == 1){
         direction = false; //second colour L->R
         set_clear = true;
         routineCounter = 2;
@@ -165,31 +193,30 @@ void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir,
         routineCounter = 0;
       }
       pause_time = 10;
-  }         
+  }
   if(pause_time == 0){
    for(int i = 0; i < pixelCount; i++){
-     if (i >= pixelCount) holder.pixel_set((direction) ? pixelCount - pulseCounter - 1 : pulseCounter, (set_clear)? colour2 : colour1); // this one
-     else holder.pixel_set((direction) ? pixelCount - pulseCounter - 1 : pulseCounter, (set_clear)? colour1 : colour2); // this one
+     if (i >= pixelCount) holder.pixel_set((direction) ? pixelCount - pulseCounter - 1 : pulseCounter, (set_clear)? get_global_colour(2) : get_global_colour(1)); // this one
+     else holder.pixel_set((direction) ? pixelCount - pulseCounter - 1 : pulseCounter, (set_clear)? get_global_colour(1) : get_global_colour(2)); // this one
    }
-   
    //strip.setPixelColor((direction) ? pixelCount - routineCounter - 1 : routineCounter, (set_clear)? colour2 : colour1);      //if reverse is true, start from last pixel
    //strip.show();
   }
-    
+
 }
 
 void colourSolid() {
   uint32_t oneBigColour;
   if(switched_off) oneBigColour = 0;
   else{
-    switch(option_colour){
+    switch(option_colour){ //this func can do its own thing
       case OC_DOUBLE: oneBigColour = strip.Color(red_s, green_s, blue_s);
                       break;
       case OC_INVERT: oneBigColour = strip.Color((red_p + red_s)/2, (green_p + green_s)/2, (blue_p + blue_s)/2);
                       break;
       case OC_RANDOM: oneBigColour = random_hold;
                       break;
-      case OC_SINGLE: 
+      case OC_SINGLE:
       default:        oneBigColour = strip.Color(red_p, green_p, blue_p);
                       break;
       }
@@ -227,16 +254,18 @@ void rainbowChunks(){
   routineCounter+=3;
 }
 
+const uint32_t rbow_colurs[8] = {0xff0000, 0x9f6000, 0x3fc000, 0x00de21, 0x007e81, 0x001ee1, 0x4200bd, 0xa2005d};
+
 void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
   static int width = 1;
-  static uint32_t rbow_colurs[8];
+//  static uint32_t rbow_colurs[8];
   if (recalc_colour) {
     width = 1 + ((50 + option_slider) >> 4);
     pulseCounter = 0 - 8 - width ;
 
-    for(int i = 0; i < 8; i++){ //8 options
-      rbow_colurs[i] = Wheel(i*36); //spread colours over pulse length
-    }
+//    for(int i = 0; i < 8; i++){ //8 options
+//      rbow_colurs[i] = Wheel(i*36); //spread colours over pulse length
+//    }
     recalc_colour = false;
   }
 
@@ -255,7 +284,7 @@ void rainbowPulse(){ //single coloured pulse that fires across screen, cycles th
      }
    }
 
-  
+
 }
 
 #define MAX_WIDTH 18
@@ -268,7 +297,7 @@ void rainbowComet() { //comet of all rainbow colours in a short pulse (should lo
     width = 8 + ((50 + option_slider) >> 4);
     if (width > MAX_WIDTH) width = MAX_WIDTH;
     if (width < MIN_WIDTH) width = MIN_WIDTH;
-    
+
     pulseCounter = 0 - 8 - width ;
 
     for(int i = 0; i < width; i++){
@@ -301,41 +330,11 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
   static uint8_t r_fade[4] = {0,0,0,0};
   static uint8_t g_fade[4] = {0,0,0,0};
   static uint8_t b_fade[4] = {0,0,0,0};
-  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b;
+
   int index = 0;
   if (recalc_colour) {
     width = 1 + (option_slider >> 3);
-    switch(option_colour){
-    case OC_DOUBLE: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = red_s;
-                    colour2_g = green_s;
-                    colour2_b = blue_s;
-                    break;
-    case OC_INVERT: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0xff - red_p;
-                    colour2_g = 0xff - green_p;
-                    colour2_b = 0xff - blue_p;
-                    break;
-    case OC_RANDOM: colour1_r = (random_hold >> 16) & 0xff;
-                    colour1_g = (random_hold >> 8) & 0xff;
-                    colour1_b = (random_hold) & 0xff;
-                    colour2_r = 0xff - colour1_r;
-                    colour2_g = 0xff - colour1_g;
-                    colour2_b = 0xff - colour1_b; //random and random invert, right??
-                    break;
-    case OC_SINGLE: 
-    default:        colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0;
-                    colour2_g = 0;
-                    colour2_b = 0;
-                    break;
-    }
+    assign_colours();
     r_fade[0] = (uint8_t)((colour1_r * 0.8) + (colour2_r * 0.2));
     r_fade[1] = (uint8_t)((colour1_r * 0.6) + (colour2_r * 0.4));
     r_fade[2] = (uint8_t)((colour1_r * 0.4) + (colour2_r * 0.6));
@@ -361,7 +360,7 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
       pause_time = 10;
    }
 
-  
+
    for(int i=0; i<pixelCount; i++){
      if((pulseCounter <= i)&&(i < (pulseCounter + 4))) { //"before" the pulse
         index = 3 - (i - pulseCounter);
@@ -372,10 +371,10 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
        holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); // this one
        //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
    }else if(((pulseCounter + 4) <= i)&&(i < (pulseCounter + 4 + width))){ //during the pulse
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour1_r,colour1_g,colour1_b) ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
    }else{    //in the secondary colour space
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(colour2_r,colour2_g,colour2_b)); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(2)); // this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour2_g,colour2_b);
    }
    }
@@ -388,43 +387,13 @@ void colourChunks(){
 }
 
 void colourFade(){
-  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, width = 1;
+  static uint8_t width = 1;
   uint8_t fin_r,fin_g,fin_b;
   float prim, sec;
   uint8_t index = 0;
   if (recalc_colour) {
     width = 1 + (option_slider >> 4);
-    switch(option_colour){
-    case OC_DOUBLE: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = red_s;
-                    colour2_g = green_s;
-                    colour2_b = blue_s;
-                    break;
-    case OC_INVERT: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0xff - red_p;
-                    colour2_g = 0xff - green_p;
-                    colour2_b = 0xff - blue_p;
-                    break;
-    case OC_RANDOM: colour1_r = (random_hold >> 16) & 0xff;
-                    colour1_g = (random_hold >> 8) & 0xff;
-                    colour1_b = (random_hold) & 0xff;
-                    colour2_r = 0xff - colour1_r;
-                    colour2_g = 0xff - colour1_g;
-                    colour2_b = 0xff - colour1_b; //random and random invert, right??
-                    break;
-    case OC_SINGLE: 
-    default:        colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0;
-                    colour2_g = 0;
-                    colour2_b = 0;
-                    break;
-    }
+    assign_colours();
     recalc_colour = false;
   }
 
@@ -445,49 +414,15 @@ void colourFade(){
 }
 
 void colourSlide(){ //like a snail
-  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, extend_lim = 3, extend = 0;
-  static uint32_t fin_1,fin_2;
+  static uint8_t extend_lim = 3, extend = 0;
   static bool ext_con = true; //true to extend, False to contract
   const int min_len = 3;
   int endCounter;
   if (recalc_colour) {
     extend_lim = 1 + (option_slider >> 4);
-    switch(option_colour){
-    case OC_DOUBLE: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = red_s;
-                    colour2_g = green_s;
-                    colour2_b = blue_s;
-                    break;
-    case OC_INVERT: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0xff - red_p;
-                    colour2_g = 0xff - green_p;
-                    colour2_b = 0xff - blue_p;
-                    break;
-    case OC_RANDOM: colour1_r = (random_hold >> 16) & 0xff;
-                    colour1_g = (random_hold >> 8) & 0xff;
-                    colour1_b = (random_hold) & 0xff;
-                    colour2_r = 0xff - colour1_r;
-                    colour2_g = 0xff - colour1_g;
-                    colour2_b = 0xff - colour1_b; //random and random invert, right??
-                    break;
-    case OC_SINGLE: 
-    default:        colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0;
-                    colour2_g = 0;
-                    colour2_b = 0;
-                    break;
-    }
-    fin_1 = strip.Color(colour1_r, colour1_g, colour1_b);
-    fin_2 = strip.Color(colour2_r, colour2_g, colour2_b);
-    
+    assign_colours();
   }
-  
+
   if((recalc_colour)||(pulseCounter >= min_len + extend_lim + pixelCount)){
       pulseCounter = 0 - min_len - extend_lim ;
       endCounter = pulseCounter + min_len;
@@ -510,17 +445,16 @@ void colourSlide(){ //like a snail
 
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter) && (i < endCounter)){  //within bulk of the snail
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
     }else{ //outside of snail, use second colour
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(2) ); // this one
     }
   }
   pause_time = 0x7f; //block the pulseCounter increment
 }
 
 void colourComet(){
-  static uint8_t colour1_r, colour1_g, colour1_b, colour2_r, colour2_g, colour2_b, width = 1;
-  static uint32_t fin_1,fin_2;
+  static uint8_t width = 1;
   static uint32_t fade[8];
   int j;
   if (recalc_colour) {
@@ -528,40 +462,7 @@ void colourComet(){
     if (width > MAX_WIDTH) width = MAX_WIDTH;
     if (width < MIN_WIDTH) width = MIN_WIDTH;
     pulseCounter = 0 - 8 - width ;
-    switch(option_colour){
-    case OC_DOUBLE: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = red_s;
-                    colour2_g = green_s;
-                    colour2_b = blue_s;
-                    break;
-    case OC_INVERT: colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0xff - red_p;
-                    colour2_g = 0xff - green_p;
-                    colour2_b = 0xff - blue_p;
-                    break;
-    case OC_RANDOM: colour1_r = (random_hold >> 16) & 0xff;
-                    colour1_g = (random_hold >> 8) & 0xff;
-                    colour1_b = (random_hold) & 0xff;
-                    colour2_r = 0xff - colour1_r;
-                    colour2_g = 0xff - colour1_g;
-                    colour2_b = 0xff - colour1_b; //random and random invert, right??
-                    break;
-    case OC_SINGLE: 
-    default:        colour1_r = red_p;
-                    colour1_g = green_p;
-                    colour1_b = blue_p;
-                    colour2_r = 0;
-                    colour2_g = 0;
-                    colour2_b = 0;
-                    break;
-    }
-
-    fin_1 = strip.Color(colour1_r, colour1_g, colour1_b);
-    fin_2 = strip.Color(colour2_r, colour2_g, colour2_b);
+    assign_colours();
     recalc_colour = false;
 
     for(int m = 0, n = 7; m < 8; m++, n--){
@@ -580,11 +481,11 @@ void colourComet(){
   j = 0;
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + width)){  //within bulk of the comet
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_1 ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
     }else if((i >= pulseCounter) && (i < pulseCounter + 8)){ //within comet tail
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[i-pulseCounter] ); // this one
     }else{ //outside of comet, use second colour
-      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fin_2 ); // this one
+      holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(2) ); // this one
     }
   }
 
@@ -632,7 +533,7 @@ void apply_mode(uint8_t check,int del){
   //delay is the delay under normal operation
   uint8_t thing = option_mode & check;
   switch(thing){
-    case OM_THEATRE: strip.setBrightness(0xff); 
+    case OM_THEATRE: strip.setBrightness(0xff);
                   apply_theatre();
                 break;
     case OM_STROBE:  apply_strobe();
