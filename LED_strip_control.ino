@@ -33,7 +33,7 @@ pixel_hold holder = pixel_hold();
 #define OM_STROBE  0x4
 #define OM_ALL     0x7
 
-uint8_t currentRoutine = colourCometR;
+uint8_t currentRoutine = rainbowR;
 
 int partyState = 0;
 int pulseCounter = 0;
@@ -382,8 +382,37 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
 
 void colourChunks(){
 
-  colourFade();  //will write later, cba
+  //colourFade();  //will write later, cba
+  static uint8_t width = MIN_WIDTH;
+  int j;
+  bool k = false;
+  if(recalc_colour){
+    width = 1 + (option_slider >> 2);
+    if (width > MAX_WIDTH) width = MAX_WIDTH;
+    if (width < MIN_WIDTH) width = MIN_WIDTH;
+    pulseCounter = 0 - width ;
 
+    assign_colours();
+    recalc_colour = false;
+  }
+
+  if(pulseCounter >= (width<<1)) pulseCounter = 0; //pulse counter has gone past 2 widths, reset it
+
+  if(pulseCounter >= width){
+    k = true; //pulseCounter has shifted us along at least 1 width, therefore start with second colour
+    j = pulseCounter - width;
+  }else{
+    j = pulseCounter;
+  }
+
+  for(int i = 0; i < pixelCount; i++, j++){ //j is a running counter to determine if we have reached 1 width again, k will toggle each time that happens
+    if(j == width){
+      j = 0;
+      k = !k;
+    }
+    if(k) holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(2) ); // this one
+    else holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
+  }
 }
 
 void colourFade(){
