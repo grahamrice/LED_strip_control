@@ -71,6 +71,10 @@ uint8_t pause_time = 0;
 
  uint8_t routineCounter = 0; //use j for small counter as a local var in functions
                              //routineCounter for direction changes and sequence control
+#define MAX_WIDTH 18
+#define MIN_WIDTH  8
+
+uint8_t width = MIN_WIDTH;
 
 /*------------------------------- General functions--------------------------------------------------------*/
 
@@ -242,12 +246,12 @@ void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows acros
   }
 
 void rainbowChunks(){
-  uint16_t slider = 10 + option_slider >> 1; // slider controls width of chunks of the same colour
   uint8_t loRes = 0; //, shifter; //low resolution counter instead of relying on this thing to do integer divides
-
+  width = 10 + option_slider >> 1; // slider controls width of chunks of the same colour
+  
   for(int i = 0; i < pixelCount; i++) {
     loRes = routineCounter + (i * 3);
-    loRes -= (loRes % slider);
+    loRes -= (loRes % width);
     holder.pixel_set(i,Wheel(loRes));  // this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
     //strip.setPixelColor(i,Wheel(loRes+routineCounter));
   }
@@ -257,15 +261,11 @@ void rainbowChunks(){
 const uint32_t rbow_colurs[8] = {0xff0000, 0x9f6000, 0x3fc000, 0x00de21, 0x007e81, 0x001ee1, 0x4200bd, 0xa2005d};
 
 void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
-  static int width = 1;
-//  static uint32_t rbow_colurs[8];
+  
   if (recalc_colour) {
     width = 1 + ((50 + option_slider) >> 4);
     pulseCounter = 0 - 8 - width ;
 
-//    for(int i = 0; i < 8; i++){ //8 options
-//      rbow_colurs[i] = Wheel(i*36); //spread colours over pulse length
-//    }
     recalc_colour = false;
   }
 
@@ -287,12 +287,11 @@ void rainbowPulse(){ //single coloured pulse that fires across screen, cycles th
 
 }
 
-#define MAX_WIDTH 18
-#define MIN_WIDTH  8
 void rainbowComet() { //comet of all rainbow colours in a short pulse (should look very mariokart rainbow road)
-  static int width = MIN_WIDTH;
   static uint32_t rbow_colurs[MAX_WIDTH];
   int j;
+  width = MIN_WIDTH;
+  
   if (recalc_colour) {
     width = 8 + ((50 + option_slider) >> 4);
     if (width > MAX_WIDTH) width = MAX_WIDTH;
@@ -326,12 +325,14 @@ void rainbowComet() { //comet of all rainbow colours in a short pulse (should lo
 }
 
 void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
-  static uint8_t width = 1;
+  
   static uint8_t r_fade[4] = {0,0,0,0};
   static uint8_t g_fade[4] = {0,0,0,0};
   static uint8_t b_fade[4] = {0,0,0,0};
 
   int index = 0;
+  width = 1;
+  
   if (recalc_colour) {
     width = 1 + (option_slider >> 3);
     assign_colours();
@@ -381,11 +382,10 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
 }
 
 void colourChunks(){
-
-  //colourFade();  //will write later, cba
-  static uint8_t width = MIN_WIDTH;
   int j;
   bool k = false;
+  width = MIN_WIDTH;
+  
   if(recalc_colour){
     width = 1 + (option_slider >> 2);
     if (width > MAX_WIDTH) width = MAX_WIDTH;
@@ -416,10 +416,11 @@ void colourChunks(){
 }
 
 void colourFade(){
-  static uint8_t width = 1;
   uint8_t fin_r,fin_g,fin_b;
   float prim, sec;
   uint8_t index = 0;
+  width = 1;
+  
   if (recalc_colour) {
     width = 1 + (option_slider >> 4);
     assign_colours();
@@ -447,6 +448,7 @@ void colourSlide(){ //like a snail
   static bool ext_con = true; //true to extend, False to contract
   const int min_len = 3;
   int endCounter;
+  
   if (recalc_colour) {
     extend_lim = 1 + (option_slider >> 4);
     assign_colours();
@@ -483,9 +485,10 @@ void colourSlide(){ //like a snail
 }
 
 void colourComet(){
-  static uint8_t width = 1;
   static uint32_t fade[8];
   int j;
+  width = 1;
+  
   if (recalc_colour) {
     width = 1 + (option_slider >> 4);
     if (width > MAX_WIDTH) width = MAX_WIDTH;
