@@ -2,9 +2,7 @@
 #include <Adafruit_NeoPixel.h>
 #include "pixel_hold.h"
 
-//const int led = 2;      //for the strip!
-
-#define pixelCount 20 //96
+#define pixelCount 48 //96
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, 2, NEO_GRB + NEO_KHZ800);
 
@@ -38,8 +36,6 @@ uint8_t currentRoutine = rainbowR;
 int partyState = 0;
 int pulseCounter = 0;
 uint8_t theatre_counter = 0;
-
-uint32_t solidColourHolder = 0x00000000;      //laziness
 
 //these colours are those set by the user
 uint8_t red_p = 0, green_p = 0, blue_p = 0; //primary colour
@@ -235,14 +231,11 @@ void colourSolid() {
 
 void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows across pixels - 400 for simplicity, will go up to 1.56 rainbows across
     uint16_t slider = 1 + (option_slider << 2);
-    if(routineCounter >=256){
-        routineCounter = 0;
-      }
-      for(int i=0; i< strip.numPixels(); i++) {
-        holder.pixel_set(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255));// // this one
-        //strip.setPixelColor(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255)); //halving to 128 spreads the full spectrum over unused pixels
-      }
-      routineCounter++;
+    for(int i=0; i< strip.numPixels(); i++) {
+      holder.pixel_set(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255));// // this one
+      //strip.setPixelColor(i, Wheel(((i * slider / strip.numPixels()) + routineCounter) & 255)); //halving to 128 spreads the full spectrum over unused pixels
+    }
+    routineCounter++;
   }
 
 void rainbowChunks(){
@@ -447,14 +440,14 @@ void colourSlide(){ //like a snail
   static uint8_t extend_lim = 3, extend = 0;
   static bool ext_con = true; //true to extend, False to contract
   const int min_len = 3;
-  int endCounter;
+  static int endCounter;
   
   if (recalc_colour) {
     extend_lim = 1 + (option_slider >> 4);
     assign_colours();
   }
 
-  if((recalc_colour)||(pulseCounter >= min_len + extend_lim + pixelCount)){
+  if(pulseCounter >= min_len + extend_lim + pixelCount){
       pulseCounter = 0 - min_len - extend_lim ;
       endCounter = pulseCounter + min_len;
       partyState++;
@@ -473,7 +466,9 @@ void colourSlide(){ //like a snail
         if (extend == 0) ext_con = true;
       }
    }
-
+//   Serial.write(0xa5);
+//   Serial.write(endCounter);
+//   Serial.write(pulseCounter);
   for(int i=0; i<pixelCount; i++){
     if((i >= pulseCounter) && (i < endCounter)){  //within bulk of the snail
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
