@@ -2,7 +2,7 @@
 #include <Adafruit_NeoPixel.h>
 #include "pixel_hold.h"
 
-#define pixelCount 48 //96
+#define pixelCount 96
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(pixelCount, 2, NEO_GRB + NEO_KHZ800);
 
@@ -67,11 +67,20 @@ uint8_t pause_time = 0;
 
  uint8_t routineCounter = 0; //use j for small counter as a local var in functions
                              //routineCounter for direction changes and sequence control
-#define MAX_WIDTH 18
-#define MIN_WIDTH  8
+#define MAX_WIDTH 32
+#define MIN_WIDTH  16
 
 uint8_t width = MIN_WIDTH;
 
+void set_width(uint8_t w){
+  width = w;
+  if (width > MAX_WIDTH) width = MAX_WIDTH;
+  if (width < MIN_WIDTH) width = MIN_WIDTH;
+}
+
+inline uint8_t get_width(){
+  return width;
+}
 /*------------------------------- General functions--------------------------------------------------------*/
 
 uint32_t limitBrightness(uint8_t rrr,uint8_t ggg,uint8_t bbb){
@@ -192,7 +201,7 @@ void colourWipe(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait, bool setDir,
         set_clear = false;
         routineCounter = 0;
       }
-      pause_time = 10;
+      pause_time = 3;
   }
   if(pause_time == 0){
    for(int i = 0; i < pixelCount; i++){
@@ -240,38 +249,43 @@ void rainbow() { //set slider to 1 for single colour, 384 for 1.5 rainbows acros
 
 void rainbowChunks(){
   uint8_t loRes = 0; //, shifter; //low resolution counter instead of relying on this thing to do integer divides
-  width = 10 + option_slider >> 1; // slider controls width of chunks of the same colour
-  
+
+  if(recalc_colour){
+    set_width(10 + option_slider >> 2); // slider controls width of chunks of the same colour
+    recalc_colour = false;
+  }
+    
   for(int i = 0; i < pixelCount; i++) {
     loRes = routineCounter + (i * 3);
-    loRes -= (loRes % width);
+    loRes -= (loRes % get_width());
     holder.pixel_set(i,Wheel(loRes));  // this one     //remove j from here but put into line above like i + j - loRes if colour changes slightly on each increment of j (this may be desirable)
     //strip.setPixelColor(i,Wheel(loRes+routineCounter));
   }
   routineCounter+=3;
 }
 
-const uint32_t rbow_colurs[8] = {0xff0000, 0x9f6000, 0x3fc000, 0x00de21, 0x007e81, 0x001ee1, 0x4200bd, 0xa2005d};
+const uint32_t rbow_colours[8] = {0xff0000, 0x9f6000, 0x3fc000, 0x00de21, 0x007e81, 0x001ee1, 0x4200bd, 0xa2005d};
 
 void rainbowPulse(){ //single coloured pulse that fires across screen, cycles through 7 colours
   
   if (recalc_colour) {
-    width = 1 + ((50 + option_slider) >> 4);
-    pulseCounter = 0 - 8 - width ;
+    set_width(0xA + (option_slider >> 2));
+    //pulseCounter = 0 - get_width() ;
 
     recalc_colour = false;
   }
 
-  if(pulseCounter >= 8 + width + pixelCount){
-      pulseCounter = 0 - 8 - width ;
+  if(pulseCounter >= get_width() + pixelCount){
+      pulseCounter = 0 - get_width() ;
       routineCounter++;
       if((routineCounter & 7) == 0) direction = !direction; //change direction when all colours have cycled
       //pause_time = 10;
    }
 
+   
    for(int i=0; i<pixelCount; i++){
-     if((i >= pulseCounter) && (i < pulseCounter + 8 + width)){
-       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[ routineCounter & 0x7 ] ); // this one
+     if((i >= pulseCounter) && (i < pulseCounter + get_width())){
+       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colours[ routineCounter & 0x7 ] ); // this one
      }else{
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, 0x0 ); // this one
      }
@@ -283,31 +297,28 @@ void rainbowPulse(){ //single coloured pulse that fires across screen, cycles th
 void rainbowComet() { //comet of all rainbow colours in a short pulse (should look very mariokart rainbow road)
   static uint32_t rbow_colurs[MAX_WIDTH];
   int j;
-  width = MIN_WIDTH;
-  
+ 
   if (recalc_colour) {
-    width = 8 + ((50 + option_slider) >> 4);
-    if (width > MAX_WIDTH) width = MAX_WIDTH;
-    if (width < MIN_WIDTH) width = MIN_WIDTH;
+    set_width(0xA + (option_slider >> 2));
+    
+    //pulseCounter = 0 - get_width() ;
 
-    pulseCounter = 0 - 8 - width ;
-
-    for(int i = 0; i < width; i++){
-      rbow_colurs[i] = Wheel((i * 255)/width); //spread colours over pulse length
+    for(int i = 0; i < get_width(); i++){
+      rbow_colurs[i] = Wheel((i * 255)/get_width()); //spread colours over pulse length
     }
     recalc_colour = false;
   }
 
-  if(pulseCounter >= width + pixelCount){
-      pulseCounter = 0 - width ;
+  if(pulseCounter >= get_width() + pixelCount){
+      pulseCounter = 0 - get_width() ;
       partyState++;
       direction = !direction;
-      pause_time = 15;
+      pause_time = 3;
    }
 
   j = 0;
   for(int i=0; i<pixelCount; i++){
-    if((i >= pulseCounter) && (i < pulseCounter + width)){
+    if((i >= pulseCounter) && (i < pulseCounter + get_width())){
       if(j > MAX_WIDTH) j = 0;
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, rbow_colurs[j++] ); // this one
     }else{
@@ -324,10 +335,9 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
   static uint8_t b_fade[4] = {0,0,0,0};
 
   int index = 0;
-  width = 1;
-  
+ 
   if (recalc_colour) {
-    width = 1 + (option_slider >> 3);
+    set_width(0xA + (option_slider >> 2));
     assign_colours();
     r_fade[0] = (uint8_t)((colour1_r * 0.8) + (colour2_r * 0.2));
     r_fade[1] = (uint8_t)((colour1_r * 0.6) + (colour2_r * 0.4));
@@ -342,16 +352,16 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
     b_fade[2] = (uint8_t)((colour1_b * 0.4) + (colour2_b * 0.6));
     b_fade[3] = (uint8_t)((colour1_b * 0.2) + (colour2_b * 0.8));
 
-    pulseCounter = 0 - 8 - width ;
+    //pulseCounter = 0 - 8 - get_width() ;
     recalc_colour = false;
   }
 
-  if(pulseCounter >= 8 + width + pixelCount){
-      pulseCounter = 0 - 8 - width ;
+  if(pulseCounter >= get_width() + 8 + pixelCount){ //additional 8 for the faded part
+      pulseCounter = 0 - 8 - get_width() ;
       routineCounter = 0;
       partyState++;
       direction = !direction;
-      pause_time = 10;
+      pause_time = 3;
    }
 
 
@@ -360,11 +370,11 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
         index = 3 - (i - pulseCounter);
         holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); // this one
         //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
-     }else if(((pulseCounter + 4 + width) <= i)&&(i < (pulseCounter + 8 + width))) { //"after" the pulse
-       index = (i - pulseCounter) - 4 - width;
+     }else if(((pulseCounter + 4 + get_width()) <= i)&&(i < (pulseCounter + 8 + get_width()))) { //"after" the pulse
+       index = (i - pulseCounter) - 4 - get_width();
        holder.pixel_set((direction) ?  pixelCount - i - 1 : i, strip.Color(r_fade[index],g_fade[index],b_fade[index]) ); // this one
        //strip.setPixelColor((direction) ?  pixelCount - i - 1 : pulseCounter,r_fade[index],g_fade[index],b_fade[index]);
-   }else if(((pulseCounter + 4) <= i)&&(i < (pulseCounter + 4 + width))){ //during the pulse
+   }else if(((pulseCounter + 4) <= i)&&(i < (pulseCounter + 4 + get_width()))){ //during the pulse
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
       //strip.setPixelColor((direction) ?  pixelCount - i - 1 : i,colour2_r,colour1_g,colour1_b);
    }else{    //in the secondary colour space
@@ -377,29 +387,26 @@ void colourPulse(){ //uint8_t r, uint8_t g, uint8_t b, uint8_t wait){
 void colourChunks(){
   int j;
   bool k = false;
-  width = MIN_WIDTH;
   
   if(recalc_colour){
-    width = 1 + (option_slider >> 2);
-    if (width > MAX_WIDTH) width = MAX_WIDTH;
-    if (width < MIN_WIDTH) width = MIN_WIDTH;
-    pulseCounter = 0 - width ;
+    set_width(0xA + (option_slider >> 2));
+    //pulseCounter = 0 - get_width() ;
 
     assign_colours();
     recalc_colour = false;
   }
 
-  if(pulseCounter >= (width<<1)) pulseCounter = 0; //pulse counter has gone past 2 widths, reset it
+  if(pulseCounter >= (get_width()<<1)) pulseCounter = 0; //pulse counter has gone past 2 widths, reset it
 
-  if(pulseCounter >= width){
+  if(pulseCounter >= get_width()){
     k = true; //pulseCounter has shifted us along at least 1 width, therefore start with second colour
-    j = pulseCounter - width;
+    j = pulseCounter - get_width();
   }else{
     j = pulseCounter;
   }
 
   for(int i = 0; i < pixelCount; i++, j++){ //j is a running counter to determine if we have reached 1 width again, k will toggle each time that happens
-    if(j == width){
+    if(j >= get_width()){
       j = 0;
       k = !k;
     }
@@ -412,10 +419,8 @@ void colourFade(){
   uint8_t fin_r,fin_g,fin_b;
   float prim, sec;
   uint8_t index = 0;
-  width = 1;
   
   if (recalc_colour) {
-    width = 1 + (option_slider >> 4);
     assign_colours();
     recalc_colour = false;
   }
@@ -439,16 +444,16 @@ void colourFade(){
 void colourSlide(){ //like a snail
   static uint8_t extend_lim = 3, extend = 0;
   static bool ext_con = true; //true to extend, False to contract
-  const int min_len = 3;
+  const int min_len = 0xA;
   static int endCounter;
   
   if (recalc_colour) {
-    extend_lim = 1 + (option_slider >> 4);
+    extend_lim = 1 + (option_slider >> 2);
     assign_colours();
   }
 
-  if(pulseCounter >= min_len + extend_lim + pixelCount){
-      pulseCounter = 0 - min_len - extend_lim ;
+  if(pulseCounter >= min_len + pixelCount){
+      pulseCounter = 0 - min_len ;
       endCounter = pulseCounter + min_len;
       partyState++;
       direction = !direction;
@@ -479,16 +484,13 @@ void colourSlide(){ //like a snail
   pause_time = 0x7f; //block the pulseCounter increment
 }
 
-void colourComet(){
+void colourComet(){ //like colour pulse, but fade only on one side
   static uint32_t fade[8];
-  int j;
-  width = 1;
+ 
   
   if (recalc_colour) {
-    width = 1 + (option_slider >> 4);
-    if (width > MAX_WIDTH) width = MAX_WIDTH;
-    if (width < MIN_WIDTH) width = MIN_WIDTH;
-    pulseCounter = 0 - 8 - width ;
+    set_width(0xA + (option_slider >> 2));
+    //pulseCounter = 0 - get_width() ;
     assign_colours();
     recalc_colour = false;
 
@@ -497,17 +499,17 @@ void colourComet(){
     }
   }
 
-  if(pulseCounter >= 8 + width + pixelCount){
-      pulseCounter = 0 - 8 - width ;
+  if(pulseCounter >= 8 + get_width() + pixelCount){  //additional 8 for the faded part
+      pulseCounter = 0 - 8 - get_width() ;
       routineCounter = 0;
       partyState++;
       direction = !direction;
-      pause_time = 10;
+      pause_time = 3;
    }
 
-  j = 0;
+ // j = 0;
   for(int i=0; i<pixelCount; i++){
-    if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + width)){  //within bulk of the comet
+    if((i >= pulseCounter + 8) && (i < pulseCounter + 8 + get_width())){  //within bulk of the comet
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, get_global_colour(1) ); // this one
     }else if((i >= pulseCounter) && (i < pulseCounter + 8)){ //within comet tail
       holder.pixel_set((direction) ?  pixelCount - i - 1 : i, fade[i-pulseCounter] ); // this one
@@ -724,13 +726,13 @@ if (!switched_off){
                          apply_mode(OM_ALL,50);
                          break;
     case rainbowCometR:  rainbowComet();
-                         apply_mode(OM_ALL,50);
+                         apply_mode(OM_ALL,40);
                          break;
     case colourCometR:   colourComet();
-                         apply_mode(OM_ALL,50);
+                         apply_mode(OM_ALL,40);
                          break;
     case colourPulseR:   colourPulse();
-                         apply_mode(OM_ALL,75);
+                         apply_mode(OM_ALL,40);
                          break;
     case colourChunksR:  colourChunks();
                          apply_mode(OM_ALL,100);
@@ -742,7 +744,7 @@ if (!switched_off){
                          apply_mode(OM_ALL,((option_slider > 10) ? option_slider : 10));
                          break;
     case colourSlideR:   colourSlide();
-                         apply_mode(OM_ALL,100);
+                         apply_mode(OM_ALL,50);
                          break;
     case solidColourR:   colourSolid();
                          apply_mode(OM_ALL,((option_slider > 20) ? option_slider : 20));
