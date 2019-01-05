@@ -536,10 +536,11 @@ void apply_theatre(){
 void apply_strobe(){
   uint16_t time_off = (1 + (latest_slider >> 3))  * STROBE_OFF_T; //0->100 becomes 1->13, * OFF time
   for(int f = 0; f < pixelCount; f++) strip.setPixelColor(f,holder.pixel_get(f)); // this one
-  strip.setBrightness(0xf0);
+  //strip.setBrightness(0xf0);
   strip.show();
   delay(STROBE_ON_T);
-  strip.setBrightness(0x01);
+  strip.fill(0,0,0); //clear all pixels
+  //strip.setBrightness(0x01);
   strip.show();
   delay(time_off);
 
