@@ -2,7 +2,7 @@
 #define PIXEL_HOLD
 
 #ifndef pixelCount
-#define pixelCount 20 //96
+#define pixelCount 6
 #endif
 
 #include "stdint.h"
